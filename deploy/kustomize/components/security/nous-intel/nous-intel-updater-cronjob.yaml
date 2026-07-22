@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nous-intel-updater
+  namespace: security
+spec:
+  # Sunday 03:00 UTC — runs after the Saturday nous GHA build
+  schedule: "0 3 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: nous-intel-updater
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: updater
+              image: ghcr.io/getpanops/nous/updater:latest
+              command:
+                - python3
+                - /app/nous-update.py
+                - pull-oci
+                - --rules-dir
+                - /intel
+              env:
+                - name: INTEL_REGISTRY
+                  value: ghcr.io/getpanops/nous
+                - name: INTEL_TAG
+                  value: latest
+                # cosign keyless — matches the nous GHA workflow identity
+                - name: COSIGN_IDENTITY_REGEXP
+                  value: "https://github\\.com/getpanops/nous/\\.github/workflows/build-bundle\\.yaml@.*"
+                - name: COSIGN_OIDC_ISSUER
+                  value: "https://token.actions.githubusercontent.com"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: nous-intel
+                  mountPath: /intel
+          volumes:
+            - name: nous-intel
+              persistentVolumeClaim:
+                claimName: nous-intel

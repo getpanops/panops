@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: panops-schema-sql
+  namespace: panops
+data:
+  schema.py: |
+    import os
+    import urllib.request
+    import sys
+
+    CH_URL = os.environ["CH_URL"]
+
+    STATEMENTS = [
+        # panops database
+        "CREATE DATABASE IF NOT EXISTS panops",
+
+        # Happenings: composite incident envelopes assembling all signals
+        # from a correlated time window across SOC/SRE/NOC domains.
+        """
+        CREATE TABLE IF NOT EXISTS panops.happenings (
+            id                   UUID DEFAULT generateUUIDv4(),
+            opened_at            DateTime64(9),
+            closed_at            Nullable(DateTime64(9)),
+            window_start         DateTime64(9),
+            window_end           DateTime64(9),
+            affected_services    Array(String),
+            domain               LowCardinality(String),
+            classifier_route     LowCardinality(String),
+            similarity_score     Nullable(Float32),
+            matched_incident_id  Nullable(UUID),
+            status               LowCardinality(String),
+            outcome              LowCardinality(String),
+            runbook_ref          Nullable(String),
+            falco_rules          Array(String),
+            sigma_rule_ids       Array(String),
+            yara_matches         Array(String),
+            drain3_patterns      String,
+            metric_anomalies     String,
+            metric_correlations  String,
+            actions_taken        String
+        ) ENGINE = MergeTree()
+        PARTITION BY toYYYYMM(opened_at)
+        ORDER BY (opened_at, domain, status)
+        TTL toDateTime(opened_at) + INTERVAL 365 DAY
+        SETTINGS ttl_only_drop_parts = 1
+        """,
+
+        # 384-dim all-MiniLM-L6-v2 embeddings for similarity search
+        """
+        CREATE TABLE IF NOT EXISTS panops.incident_embeddings (
+            happening_id     UUID,
+            embedded_at      DateTime64(9) DEFAULT now64(),
+            description_text String,
+            embedding        Array(Float32)
+        ) ENGINE = MergeTree()
+        ORDER BY (happening_id, embedded_at)
+        """,
+
+        # Learned metric correlation pairs — builds automatically after each resolved incident
+        """
+        CREATE TABLE IF NOT EXISTS panops.metric_correlations (
+            discovered_at  DateTime64(9) DEFAULT now64(),
+            service_a      String,
+            service_b      String,
+            metric_a       String,
+            metric_b       String,
+            lag_seconds    Int32,
+            pearson_r      Float32,
+            granger_p      Nullable(Float32),
+            incident_count UInt32 DEFAULT 1,
+            last_seen_at   DateTime64(9) DEFAULT now64()
+        ) ENGINE = ReplacingMergeTree(last_seen_at)
+        ORDER BY (service_a, service_b, metric_a, metric_b, lag_seconds)
+        """,
+
+        # Per-action outcome log for self-improving remediation rules
+        """
+        CREATE TABLE IF NOT EXISTS panops.remediation_outcomes (
+            happening_id     UUID,
+            recorded_at      DateTime64(9) DEFAULT now64(),
+            rule_name        LowCardinality(String),
+            command          String,
+            command_output   String,
+            outcome          LowCardinality(String),
+            duration_seconds Float32
+        ) ENGINE = MergeTree()
+        ORDER BY (recorded_at, happening_id)
+        TTL toDateTime(recorded_at) + INTERVAL 365 DAY
+        SETTINGS ttl_only_drop_parts = 1
+        """,
+
+        # Embeddings for qryn Drain3 templates — enables cross-source cosineDistance
+        # queries between log patterns and incident embeddings in a single SQL JOIN.
+        """
+        CREATE TABLE IF NOT EXISTS qryn.pattern_embeddings (
+            template_id  UInt64,
+            template     String,
+            embedded_at  DateTime64(9) DEFAULT now64(),
+            embedding    Array(Float32)
+        ) ENGINE = ReplacingMergeTree(embedded_at)
+        ORDER BY template_id
+        """,
+
+        # Embeddings for sigma_matches rows — enables semantic similarity queries
+        # between Sigma rule matches and happenings across the same vector space.
+        """
+        CREATE TABLE IF NOT EXISTS qryn.sigma_embeddings (
+            sigma_timestamp  DateTime64(9),
+            rule_id          String,
+            embedded_at      DateTime64(9) DEFAULT now64(),
+            description_text String,
+            embedding        Array(Float32)
+        ) ENGINE = MergeTree()
+        ORDER BY (sigma_timestamp, rule_id)
+        TTL toDateTime(sigma_timestamp) + INTERVAL 30 DAY
+        SETTINGS ttl_only_drop_parts = 1
+        """,
+    ]
+
+    def ch_exec(sql):
+        data = sql.strip().encode()
+        req = urllib.request.Request(CH_URL, data=data, method="POST")
+        req.add_header("Content-Type", "text/plain")
+        req.add_header("X-ClickHouse-User", os.environ.get("CH_USER", "default"))
+        req.add_header("X-ClickHouse-Key",  os.environ.get("CH_PASSWORD", ""))
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.read().decode()
+
+    errors = 0
+    for i, stmt in enumerate(STATEMENTS, 1):
+        label = stmt.strip().splitlines()[0][:80]
+        try:
+            ch_exec(stmt)
+            print(f"[{i}/{len(STATEMENTS)}] OK: {label}", flush=True)
+        except Exception as e:
+            print(f"[{i}/{len(STATEMENTS)}] FAIL: {label}\n  {e}", file=sys.stderr, flush=True)
+            errors += 1
+
+    if errors:
+        print(f"\n{errors} statement(s) failed", file=sys.stderr, flush=True)
+        sys.exit(1)
+    print(f"\nAll {len(STATEMENTS)} statements succeeded", flush=True)

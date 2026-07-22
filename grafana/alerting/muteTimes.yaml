@@ -1,0 +1,11 @@
+apiVersion: 1
+muteTimes:
+  - orgId: 1
+    name: outside-cve-digest-window
+    time_intervals:
+      - times:
+          - start_time: "00:00"
+            end_time: "05:44"
+      - times:
+          - start_time: "05:52"
+            end_time: "24:00"

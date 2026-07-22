@@ -1,0 +1,77 @@
+---
+# Source: falco-operator/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: falco-operator
+  namespace: security
+  labels:
+    helm.sh/chart: falco-operator-0.3.0
+    app.kubernetes.io/name: falco-operator
+    app.kubernetes.io/instance: falco-operator
+    app.kubernetes.io/version: "0.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: falco
+    control-plane: falco-operator
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: falco-operator
+      app.kubernetes.io/instance: falco-operator
+      control-plane: falco-operator
+      app.kubernetes.io/part-of: falco
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: falco-operator-0.3.0
+        app.kubernetes.io/name: falco-operator
+        app.kubernetes.io/instance: falco-operator
+        app.kubernetes.io/version: "0.4.0"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/part-of: falco
+        control-plane: falco-operator
+    spec:
+      serviceAccountName: falco-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          command:
+            - /usr/bin/manager
+          args:
+            - --health-probe-bind-address=:8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+          image: "falcosecurity/falco-operator:0.4.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+      terminationGracePeriodSeconds: 10

@@ -1,0 +1,52 @@
+title: Privilege Escalation via Setuid Binary or Capability Change
+id: d8e6f5a4-4567-89ab-def0-123456789012
+status: experimental
+description: Detects execution of setuid binaries or capability manipulation that may indicate privilege escalation attempts inside a container.
+author: panops
+date: 2026-06-27
+references:
+  - https://attack.mitre.org/techniques/T1548/001/
+  - https://attack.mitre.org/techniques/T1548/003/
+tags:
+  - attack.privilege_escalation
+  - attack.t1548.001
+  - attack.t1548.003
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection_setuid:
+    Image|endswith:
+      - '/sudo'
+      - '/su'
+      - '/newgrp'
+      - '/pkexec'
+      - '/doas'
+    ContainerName|contains: '*'
+  selection_capability_tools:
+    Image|endswith:
+      - '/setcap'
+      - '/getcap'
+      - '/capsh'
+    CommandLine|contains:
+      - 'cap_setuid'
+      - 'cap_net_admin'
+      - 'cap_sys_admin'
+      - 'cap_dac_override'
+  condition: selection_setuid or selection_capability_tools
+falsepositives:
+  - Container images that legitimately use sudo for service management
+level: high
+x-panops-logql: '{exporter="loki", event_class="runtime-security", job="falco"} |~ "cap_setuid|cap_sys_admin|cap_net_admin|cap_dac_override|setcap|capsh"'
+x-panops-chsql: |
+  SELECT string, timestamp_ns FROM qryn.samples_v3
+  WHERE fingerprint IN (
+      SELECT fingerprint FROM qryn.time_series
+      WHERE labels LIKE '%"job":"falco"%'
+        AND labels LIKE '%"event_class":"runtime-security"%'
+  )
+  AND (string LIKE '%cap_setuid%' OR string LIKE '%cap_sys_admin%'
+       OR string LIKE '%cap_net_admin%' OR string LIKE '%cap_dac_override%'
+       OR string LIKE '%setcap%' OR string LIKE '%capsh%')
+  AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+  LIMIT 500

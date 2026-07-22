@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-ingress
+  namespace: observability
+  annotations:
+    description: "Allow ingress to Grafana from web-gateway and host probes"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: grafana
+
+  ingress:
+  # Allow traffic from Gateway API (Cilium ingress controller)
+  - fromEntities:
+    - ingress
+    toPorts:
+    - ports:
+      - port: "3000"
+        protocol: TCP
+
+  # Allow kubelet health/readiness probes from host
+  - fromEntities:
+    - host
+    toPorts:
+    - ports:
+      - port: "3000"
+        protocol: TCP

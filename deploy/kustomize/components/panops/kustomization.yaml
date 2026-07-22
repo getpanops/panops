@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Secret 'clickhouse-password' in namespace 'panops' must exist before applying.
+# Created by: python3 deploy/configure.py
+resources:
+  - namespace.yaml
+  - assembler/
+  - clickhouse-schema/
+  - llm-job/

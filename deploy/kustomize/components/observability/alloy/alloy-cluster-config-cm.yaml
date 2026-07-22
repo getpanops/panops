@@ -1,0 +1,284 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-cluster-config
+  namespace: observability
+data:
+  config.alloy: |
+    // Loki endpoint for events
+    loki.write "default" {
+      endpoint {
+        url = "http://gigapipe.observability.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
+
+    // Prometheus endpoint for metrics
+    prometheus.remote_write "default" {
+      endpoint {
+        url = "http://gigapipe.observability.svc.cluster.local:3100/api/prom/push"
+      }
+    }
+
+    // Collect Kubernetes events
+    loki.source.kubernetes_events "cluster_events" {
+      job_name   = "integrations/kubernetes/eventhandler"
+      log_format = "logfmt"
+      forward_to = [loki.write.default.receiver]
+    }
+
+    // Relabeling rules applied inside loki.source.syslog BEFORE __ labels are stripped.
+    // loki.relabel used as a rules provider only; forward_to is intentionally empty.
+    loki.relabel "syslog_rules" {
+      forward_to = []
+
+      // Promote RFC3164 HOSTNAME field to a host stream label
+      rule {
+        source_labels = ["__syslog_message_hostname"]
+        target_label  = "host"
+      }
+
+      // Fallback: if sender omitted HOSTNAME, use the connection source hostname/IP.
+      // source_labels joined with default ";" separator; regex matches ";value"
+      // meaning host was empty and connection hostname is non-empty.
+      rule {
+        source_labels = ["host", "__syslog_connection_hostname"]
+        regex         = "^;(.+)"
+        target_label  = "host"
+        replacement   = "$1"
+      }
+    }
+
+    // Syslog from network devices (routers, APs, hypervisors)
+    loki.source.syslog "network_devices" {
+      listener {
+        address                        = "0.0.0.0:514"
+        protocol                       = "udp"
+        syslog_format                  = "rfc3164"
+        use_incoming_timestamp         = true
+        rfc3164_default_to_current_year = true
+        labels = {
+          job = "syslog",
+        }
+      }
+      relabel_rules = loki.relabel.syslog_rules.rules
+      forward_to    = [loki.write.default.receiver]
+    }
+
+    // UniFi syslog listener (gateway and switches) on dedicated port 5514.
+    // syslog-ng on UniFi OS uses ts_format(iso) which breaks RFC3164 timestamp
+    // parsing; use_incoming_timestamp=false makes the parser accept any timestamp
+    // token without validation.  Source: svenvg.com/posts/unifi-syslog-with-alloy-and-loki/
+    loki.relabel "unifi_syslog" {
+      forward_to = []
+
+      rule {
+        source_labels = ["__syslog_message_severity"]
+        target_label  = "detected_level"
+      }
+      rule {
+        source_labels = ["__syslog_message_severity"]
+        regex         = "(?i)(emergency|alert|critical)"
+        target_label  = "detected_level"
+        replacement   = "critical"
+      }
+      rule {
+        source_labels = ["__syslog_message_severity"]
+        regex         = "(?i)(warning)"
+        target_label  = "detected_level"
+        replacement   = "warn"
+      }
+      rule {
+        source_labels = ["__syslog_message_severity"]
+        regex         = "(?i)(notice|informational)"
+        target_label  = "detected_level"
+        replacement   = "info"
+      }
+      rule {
+        source_labels = ["__syslog_message_hostname"]
+        target_label  = "host"
+      }
+      rule {
+        source_labels = ["__syslog_message_app_name"]
+        target_label  = "app"
+      }
+    }
+
+    loki.source.syslog "unifi" {
+      listener {
+        address                        = "0.0.0.0:5514"
+        protocol                       = "udp"
+        syslog_format                  = "rfc3164"
+        use_incoming_timestamp         = false
+        rfc3164_default_to_current_year = true
+        labels = {
+          job = "unifi",
+        }
+      }
+      relabel_rules = loki.relabel.unifi_syslog.rules
+      forward_to    = [loki.process.unifi.receiver]
+    }
+
+    loki.process "unifi" {
+      // Strip UniFi-specific prefix from log lines.
+      // Format 1 (AP/Switch): "mac,firmware: program[pid]: message"
+      // Format 2 (Gateway):   "hostname program[pid]: message"
+      stage.regex {
+        expression = "^(?:[\\w,\\-\\.\\+]+:\\s+|[\\w\\-]+\\s+)?(?P<app>[\\w\\-]+)(?:\\[\\d+\\])?:\\s*(?P<message>.*)$"
+      }
+      stage.labels {
+        values = { app = "" }
+      }
+      stage.output {
+        source = "message"
+      }
+      forward_to = [loki.write.default.receiver]
+    }
+
+    // Service discovery for pods with prometheus.io/scrape annotation
+    discovery.kubernetes "services" {
+      role = "service"
+    }
+
+    discovery.relabel "services" {
+      targets = discovery.kubernetes.services.targets
+
+      // Keep only services with prometheus.io/scrape = "true"
+      rule {
+        source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_scrape"]
+        action        = "keep"
+        regex         = "true"
+      }
+
+      // Use custom port if prometheus.io/port is set
+      rule {
+        source_labels = ["__address__", "__meta_kubernetes_service_annotation_prometheus_io_port"]
+        action        = "replace"
+        regex         = "([^:]+)(?::\\d+)?;(\\d+)"
+        replacement   = "$1:$2"
+        target_label  = "__address__"
+      }
+
+      // Use custom path if prometheus.io/path is set
+      rule {
+        source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_path"]
+        action        = "replace"
+        target_label  = "__metrics_path__"
+        regex         = "(.+)"
+      }
+    }
+
+    prometheus.scrape "services" {
+      targets    = discovery.relabel.services.output
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    // Static scrape targets for OpenWrt APs
+    prometheus.scrape "openwrt_aps" {
+      targets = [
+        { __address__ = "CHANGE_ME_NODE1_IP:9000" },
+        { __address__ = "CHANGE_ME_NODE2_IP:9000" },
+        { __address__ = "CHANGE_ME_NODE3_IP:9000" },
+      ]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    // Optional: add static scrape targets for hypervisor OTLP/metrics bridges here.
+    // Example for a 3-node cluster:
+    // prometheus.scrape "hypervisor_otel_bridge" {
+    //   targets = [
+    //     { __address__ = "CHANGE_ME_NODE1_IP:9464", instance = "node-01" },
+    //     { __address__ = "CHANGE_ME_NODE2_IP:9464", instance = "node-02" },
+    //   ]
+    //   forward_to = [prometheus.remote_write.default.receiver]
+    // }
+
+    // Static scrape targets for infrastructure components
+    prometheus.scrape "cilium_agent" {
+      targets = [{
+        __address__ = "cilium-agent.kube-system.svc.cluster.local:9962",
+      }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    prometheus.scrape "cilium_operator" {
+      targets = [{
+        __address__ = "cilium-operator.kube-system.svc.cluster.local:9963",
+      }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    prometheus.scrape "coredns" {
+      targets = [{
+        __address__ = "kube-dns.kube-system.svc.cluster.local:9153",
+      }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    prometheus.scrape "coredns_authoritative" {
+      targets = [{
+        __address__ = "coredns.dns-system.svc.cluster.local:9153",
+      }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    prometheus.scrape "trivy" {
+      targets = [{
+        __address__ = "trivy-trivy-operator.security.svc.cluster.local:8080",
+      }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    prometheus.scrape "blackbox" {
+      targets = [{
+        __address__ = "blackbox-exporter.observability.svc.cluster.local:9115",
+      }]
+      forward_to = [prometheus.remote_write.default.receiver]
+      scrape_interval = "30s"
+    }
+
+    // Blackbox probe targets
+    // Gateway probe: single check covering all services behind the shared gateway
+    // Returns 404 (no default route) which http_gateway module accepts — confirms TLS + Envoy up
+    // Internal probes: hit k8s health endpoints directly, bypassing auth redirects
+    // TLS cert probe: one external HTTPS probe kept solely for probe_ssl_earliest_cert_expiry
+    prometheus.scrape "blackbox_probes" {
+      targets = [
+        // Gateway — covers all *.YOUR_DOMAIN services behind Cilium GW
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "https://gw.YOUR_DOMAIN", __param_module = "http_gateway", instance = "gateway", job = "blackbox/http"},
+
+        // Internal liveness endpoints — use lightweight process-up checks, not deep readiness
+        // (readiness checks that verify downstream deps cause false alerts when deps are briefly busy)
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "http://grafana.observability.svc.cluster.local:80/api/health", __param_module = "http_2xx", instance = "grafana", job = "blackbox/http"},
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "http://platform-coroot.observability.svc.cluster.local:8080/healthz", __param_module = "http_2xx", instance = "coroot", job = "blackbox/http"},
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "http://pyrra-api.observability.svc.cluster.local:9099/metrics", __param_module = "http_2xx", instance = "pyrra", job = "blackbox/http"},
+        // Add probes for your cluster services here. Examples:
+        // {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "http://MY_APP.MY_NS.svc.cluster.local:80/healthz", __param_module = "http_2xx", instance = "my-app", job = "blackbox/http"},
+
+        // TCP connectivity
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "gigapipe.observability.svc.cluster.local:3100", __param_module = "tcp_connect", instance = "gigapipe", job = "blackbox/tcp"},
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "http://canary-service.validation.svc.cluster.local:80/", __param_module = "http_2xx", instance = "canary-service", job = "blackbox/http"},
+
+        // TLS cert expiry monitoring (one external probe, auth failure ignored via module)
+        {__address__ = "blackbox-exporter.observability.svc.cluster.local:9115", __param_target = "https://grafana.YOUR_DOMAIN", __param_module = "http_401_ok", instance = "tls-cert", job = "blackbox/tls"},
+      ]
+      metrics_path    = "/probe"
+      forward_to      = [prometheus.remote_write.default.receiver]
+      scrape_interval = "60s"
+    }
+
+    // kube-bench CIS benchmark pod log discovery and scraping
+    discovery.kubernetes "kube_bench_pods" {
+      role = "pod"
+      namespaces {
+        names = ["validation"]
+      }
+      selectors {
+        role  = "pod"
+        label = "job-name=kube-bench"
+      }
+    }
+
+    loki.source.kubernetes "kube_bench" {
+      targets    = discovery.kubernetes.kube_bench_pods.targets
+      forward_to = [loki.write.default.receiver]
+    }

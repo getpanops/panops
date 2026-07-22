@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cert-manager-alerts
+  namespace: observability
+  labels:
+    prometheus: ruler
+spec:
+  groups:
+    - name: cert-manager-alerts
+      interval: 30s
+      rules:
+        - alert: CertificateExpiringSoon
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in less than 7 days"
+            description: "Certificate {{ $labels.namespace }}/{{ $labels.name }} will expire in {{ $value | humanizeDuration }}. Ensure cert-manager renewal is working correctly."
+
+        - alert: CertificateExpiryCritical
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 2 * 24 * 3600
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in less than 2 days"
+            description: "Certificate {{ $labels.namespace }}/{{ $labels.name }} will expire CRITICALLY SOON in {{ $value | humanizeDuration }}. Immediate renewal action required."
+
+        - alert: CertificateRenewalFailed
+          expr: increase(certmanager_http_acme_client_request_count{status=~"4..|5.."}[1h]) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "cert-manager ACME renewal is failing"
+            description: "cert-manager is experiencing failures during ACME HTTP requests. Check cert-manager logs and ACME provider status. Recent failures: {{ $value | humanize }}"

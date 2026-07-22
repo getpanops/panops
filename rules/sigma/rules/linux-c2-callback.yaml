@@ -1,0 +1,52 @@
+title: Potential C2 Callback from Container
+id: c7d5e4f3-3456-789a-cdef-012345678901
+status: experimental
+description: Detects outbound network connections to common C2 ports or reverse shell indicators from within a container process.
+author: panops
+date: 2026-06-27
+references:
+  - https://attack.mitre.org/techniques/T1071/
+  - https://attack.mitre.org/techniques/T1105/
+tags:
+  - attack.command_and_control
+  - attack.t1071
+  - attack.t1105
+logsource:
+  category: network_connection
+  product: linux
+detection:
+  selection_reverse_shell:
+    Image|endswith:
+      - '/nc'
+      - '/ncat'
+      - '/netcat'
+      - '/bash'
+      - '/sh'
+      - '/python'
+      - '/python3'
+      - '/perl'
+      - '/ruby'
+    DestinationPort:
+      - 4444
+      - 4445
+      - 1337
+      - 31337
+      - 9001
+  condition: selection_reverse_shell
+falsepositives:
+  - Penetration testing tools in dedicated test namespaces
+level: high
+x-panops-logql: '{exporter="loki", event_class="runtime-security", job="falco"} |= "Redirect STDOUT/STDIN to Network Connection" |~ "rport=(4444|4445|1337|31337|9001)[^0-9]"'
+x-panops-chsql: |
+  SELECT string, timestamp_ns FROM qryn.samples_v3
+  WHERE fingerprint IN (
+      SELECT fingerprint FROM qryn.time_series
+      WHERE labels LIKE '%"job":"falco"%'
+        AND labels LIKE '%"event_class":"runtime-security"%'
+  )
+  AND string LIKE '%Redirect STDOUT/STDIN to Network Connection%'
+  AND (string LIKE '% rport=4444 %' OR string LIKE '% rport=4445 %'
+       OR string LIKE '% rport=1337 %' OR string LIKE '% rport=31337 %'
+       OR string LIKE '% rport=9001 %')
+  AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+  LIMIT 500

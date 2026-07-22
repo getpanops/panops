@@ -1,0 +1,30 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: SLO - Canary Availability
+    folder: SRE Alerts
+    interval: 1m
+    rules:
+      - uid: slo-canary-fast-burn
+        title: Canary SLO Fast Burn
+        condition: A
+        labels:
+          severity: warning
+          source: sre
+          slo: canary-availability
+        annotations:
+          summary: "Canary service SLO burning fast ({{ $value }} error rate over 3m)"
+          description: "probe_success burn rate exceeds fast-burn threshold — canary service availability SLO at risk"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-slo-burn.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: (1 - avg_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3m])) > 0.14
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 1m

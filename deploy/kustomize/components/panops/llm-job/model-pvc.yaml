@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: panops-model-pvc
+  namespace: panops
+spec:
+  storageClassName: rbd-nvme
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi

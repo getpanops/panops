@@ -1,0 +1,24 @@
+---
+# Source: falco-talon/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: falco-talon
+  namespace: security
+  labels:
+    helm.sh/chart: falco-talon-0.4.1
+    app.kubernetes.io/part-of: falco-talon
+    app.kubernetes.io/managed-by: falco-talon
+    app.kubernetes.io/name: falco-talon
+    app.kubernetes.io/instance: falco-talon
+    app.kubernetes.io/version: 0.3.0
+spec:
+  type: ClusterIP
+  ports:
+    - port: 2803
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: falco-talon
+    app.kubernetes.io/instance: falco-talon

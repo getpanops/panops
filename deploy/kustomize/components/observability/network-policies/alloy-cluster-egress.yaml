@@ -1,0 +1,56 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: alloy-cluster-egress
+  namespace: observability
+  annotations:
+    description: "Allow Alloy cluster deployment to scrape infrastructure metrics"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: alloy-cluster
+
+  egress:
+  # Allow scraping Cilium agent metrics
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: cilium
+    toPorts:
+    - ports:
+      - port: "9962"
+        protocol: TCP
+
+  # Allow scraping Cilium operator metrics
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:io.cilium.k8s.policy.name: cilium-operator
+    toPorts:
+    - ports:
+      - port: "9963"
+        protocol: TCP
+
+  # Allow scraping Hubble relay metrics
+  # Allow scraping CoreDNS metrics (kube-dns)
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "9153"
+        protocol: TCP
+
+  # Allow scraping Trivy operator metrics
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: security
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+
+  # Allow discovering all services in cluster for annotation-based scraping
+  - toEntities:
+    - kube-apiserver

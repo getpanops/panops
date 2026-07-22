@@ -1,0 +1,20 @@
+---
+# Source: falco-talon/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: falco-talon
+  namespace: security
+  labels:
+    app.kubernetes.io/name: falco-talon
+    helm.sh/chart: falco-talon-0.4.1
+    app.kubernetes.io/instance: falco-talon
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: falco-talon
+subjects:
+- kind: ServiceAccount
+  name: falco-talon
+  namespace: security

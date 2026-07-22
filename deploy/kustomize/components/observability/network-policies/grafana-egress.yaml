@@ -1,0 +1,75 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-egress
+  namespace: observability
+  annotations:
+    description: "Allow Grafana HTTPS egress for OIDC token exchange with the identity provider"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: grafana
+
+  egress:
+  - toEntities:
+    - world
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+      - port: "587"
+        protocol: TCP
+  # Cilium Gateway API ingress entity (cilium-envoy uses hostNetwork, not classified as world or CIDR)
+  - toEntities:
+    - ingress
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+      - port: "80"
+        protocol: TCP
+  # Gateway VIP CIDRs (belt-and-suspenders alongside ingress entity)
+  - toCIDR:
+    - CHANGE_ME_SMTP_IP/32
+    - 2402:3120:20b7:10:10::100/128
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+
+  # Allow Grafana to call your OIDC provider token/userinfo endpoints.
+  # Update namespace and serviceName to match your provider (Keycloak, Authelia, etc.)
+  # - toServices:
+  #   - k8sService:
+  #       namespace: CHANGE_ME_OIDC_NS
+  #       serviceName: CHANGE_ME_OIDC_SERVICE
+
+  # Keep service VIP access stable during endpoint churn/restarts.
+  - toServices:
+    - k8sService:
+        namespace: observability
+        serviceName: gigapipe
+    toPorts:
+    - ports:
+      - port: "3100"
+        protocol: TCP
+
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+        k8s:app: gigapipe
+    toPorts:
+    - ports:
+      - port: "3100"
+        protocol: TCP
+
+  # PanOps Brain happening assembler — receives Grafana alert webhooks
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: panops
+        app: panops-assembler
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+

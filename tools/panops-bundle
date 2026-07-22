@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+COMPOSE_DIR="${REPO_ROOT}/deploy/docker-compose"
+VERSION="$(date +%Y-%m-%d)"
+
+usage() {
+  cat <<EOF
+panops-bundle — package or apply PanOps airgap bundles
+
+Commands:
+  build --output DIR    Package all images, model, intel, and config into DIR/
+  apply BUNDLE_DIR      Install from a bundle directory on an airgapped host
+
+Options for build:
+  --output DIR          Output directory (required)
+  --no-intel            Skip intel bundle (faster; build separately via nous-update.py)
+  --no-model            Skip model weights (must be pre-placed on target)
+  --version TAG         Override bundle version (default: today's date)
+
+Options for apply:
+  --compose-dir DIR     Where to place compose files (default: ~/panops)
+  --start               Run docker compose up -d after applying
+
+Intel bundles are built separately using nous-update.py from the nous repo:
+  python3 /path/to/nous/updater/src/nous-update.py pull-oci --rules-dir INTEL_DIR
+EOF
+  exit 1
+}
+
+cmd_build() {
+  local output_dir="${1}"
+  local bundle_dir="${output_dir}/panops-bundle-${VERSION}"
+  mkdir -p "${bundle_dir}/images" "${bundle_dir}/models" "${bundle_dir}/config"
+
+  echo "==> Saving Docker images..."
+  local images
+  images=$(grep -h '^\s*image:' \
+    "${COMPOSE_DIR}/docker-compose.yml" \
+    "${COMPOSE_DIR}/docker-compose.llm.yml" \
+    2>/dev/null | sed 's/.*image:\s*//' | sed 's/\${[^}]*:-\([^}]*\)}/\1/g' | sort -u)
+
+  for img in $images; do
+    local safe_name
+    safe_name=$(echo "${img}" | tr '/: ' '---')
+    echo "  Saving ${img}..."
+    docker pull "${img}" 2>/dev/null || true
+    docker save "${img}" | gzip > "${bundle_dir}/images/${safe_name}.tar.gz"
+  done
+
+  echo "==> Copying config files..."
+  cp -r "${COMPOSE_DIR}/config" "${bundle_dir}/config/"
+  cp "${COMPOSE_DIR}/docker-compose.yml" "${bundle_dir}/"
+  [ -f "${COMPOSE_DIR}/docker-compose.llm.yml" ] && cp "${COMPOSE_DIR}/docker-compose.llm.yml" "${bundle_dir}/"
+  [ -f "${COMPOSE_DIR}/.env.example" ] && cp "${COMPOSE_DIR}/.env.example" "${bundle_dir}/.env.example"
+
+  if [[ "${SKIP_MODEL:-false}" != "true" ]]; then
+    echo "==> Copying model weights..."
+    if ls "${COMPOSE_DIR}/models/"*.gguf 2>/dev/null | head -1; then
+      cp "${COMPOSE_DIR}/models/"*.gguf "${bundle_dir}/models/"
+    else
+      echo "  WARN: No .gguf files found in ${COMPOSE_DIR}/models/ — skipping"
+      echo "  To include: place the model file there first, or re-run with --no-model"
+    fi
+  fi
+
+  if [[ "${SKIP_INTEL:-false}" != "true" ]]; then
+    echo "==> Intel bundle: build using nous-update.py and place output in ${bundle_dir}/intel/"
+    echo "    Example: python3 /path/to/nous/updater/src/nous-update.py pull-oci --rules-dir ${bundle_dir}/intel"
+    echo "  WARN: Skipping auto-build — intel is managed via the nous repo"
+  fi
+
+  echo "==> Writing manifest..."
+  cat > "${bundle_dir}/manifest.json" <<MANIFEST
+{
+  "version": "${VERSION}",
+  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "panops_repo": "$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo 'unknown')",
+  "images_count": $(ls "${bundle_dir}/images/" | wc -l),
+  "has_model": $(ls "${bundle_dir}/models/"*.gguf 2>/dev/null | wc -l | awk '{print ($1>0)?"true":"false"}'),
+  "has_intel": $([ -d "${bundle_dir}/intel" ] && echo true || echo false)
+}
+MANIFEST
+
+  echo "==> Writing bootstrap.sh..."
+  cat > "${bundle_dir}/bootstrap.sh" <<'BOOTSTRAP'
+#!/usr/bin/env bash
+# Run this on the airgapped host: bash bootstrap.sh [--start]
+set -euo pipefail
+BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="${HOME}/panops"
+
+mkdir -p "${INSTALL_DIR}/models"
+
+echo "==> Loading Docker images..."
+for f in "${BUNDLE_DIR}/images/"*.tar.gz; do
+  echo "  Loading $(basename $f)..."
+  docker load < "$f"
+done
+
+echo "==> Copying config and compose files..."
+cp "${BUNDLE_DIR}/docker-compose.yml" "${INSTALL_DIR}/"
+[ -f "${BUNDLE_DIR}/docker-compose.llm.yml" ] && cp "${BUNDLE_DIR}/docker-compose.llm.yml" "${INSTALL_DIR}/"
+cp -r "${BUNDLE_DIR}/config" "${INSTALL_DIR}/config"
+[ -f "${BUNDLE_DIR}/.env.example" ] && cp "${BUNDLE_DIR}/.env.example" "${INSTALL_DIR}/.env.example"
+
+if ls "${BUNDLE_DIR}/models/"*.gguf 2>/dev/null | head -1 > /dev/null; then
+  echo "==> Installing model weights..."
+  cp "${BUNDLE_DIR}/models/"*.gguf "${INSTALL_DIR}/models/"
+fi
+
+if [ -d "${BUNDLE_DIR}/intel" ]; then
+  echo "==> Intel bundle present — copy to your RULES_DIR or run nous-update.py apply"
+fi
+
+echo ""
+echo "==> Bundle applied to ${INSTALL_DIR}"
+echo "==> Next steps:"
+echo "    cd ${INSTALL_DIR}"
+echo "    cp .env.example .env && nano .env   # set passwords"
+echo "    docker compose up -d                 # start core stack"
+echo "    docker compose -f docker-compose.yml -f docker-compose.llm.yml up -d  # with LLM"
+
+if [[ "${1:-}" == "--start" ]]; then
+  cd "${INSTALL_DIR}" && docker compose up -d
+fi
+BOOTSTRAP
+  chmod +x "${bundle_dir}/bootstrap.sh"
+
+  echo ""
+  echo "==> Bundle ready: ${bundle_dir}"
+  du -sh "${bundle_dir}"
+  echo "==> To create a zip: zip -r ${bundle_dir}.zip ${bundle_dir}"
+}
+
+cmd_apply() {
+  local bundle_dir="${1}"
+  if [ ! -f "${bundle_dir}/manifest.json" ]; then
+    echo "ERROR: ${bundle_dir}/manifest.json not found — is this a valid bundle?"
+    exit 1
+  fi
+  echo "==> Applying bundle: $(cat "${bundle_dir}/manifest.json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"version {d['version']}, created {d['created_at']}\")")"
+  bash "${bundle_dir}/bootstrap.sh" "${@:2}"
+}
+
+case "${1:-}" in
+  build)   shift; output=""; skip_intel=false; skip_model=false
+           while [[ $# -gt 0 ]]; do
+             case $1 in
+               --output) output="$2"; shift 2 ;;
+               --no-intel) skip_intel=true; shift ;;
+               --no-model) skip_model=true; shift ;;
+               --version) VERSION="$2"; shift 2 ;;
+               *) echo "Unknown flag: $1"; usage ;;
+             esac
+           done
+           [[ -z "$output" ]] && usage
+           SKIP_INTEL=$skip_intel SKIP_MODEL=$skip_model cmd_build "$output" ;;
+  apply)   shift; [[ $# -lt 1 ]] && usage; cmd_apply "$@" ;;
+  *)       usage ;;
+esac

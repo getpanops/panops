@@ -1,0 +1,64 @@
+apiVersion: 1
+contactPoints:
+  # SRE and SOC alerts route through PanOps assembler webhook for classification
+  # and enrichment before forwarding to your notification channel.
+  - orgId: 1
+    name: SRE Alerts
+    receivers:
+      - uid: sre-panops
+        type: webhook
+        settings:
+          url: http://assembler:8080/webhook
+          httpMethod: POST
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: SOC Alerts
+    receivers:
+      - uid: soc-panops
+        type: webhook
+        settings:
+          url: http://assembler:8080/webhook
+          httpMethod: POST
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: NOC Alerts
+    receivers:
+      - uid: noc-alerts
+        type: webhook
+        settings:
+          # Default: route through assembler. Override in Grafana UI for Slack/Teams/Matrix.
+          url: http://panops-assembler:8080/webhook
+          httpMethod: POST
+        disableResolveMessage: false
+
+  # CVE alerts bypass PanOps (no classification needed — raw feed notification)
+  - orgId: 1
+    name: SOC CVE New
+    receivers:
+      - uid: soc-cve-new
+        type: webhook
+        settings:
+          url: http://panops-assembler:8080/webhook
+          httpMethod: POST
+        disableResolveMessage: true
+
+  - orgId: 1
+    name: SOC CVE Digest
+    receivers:
+      - uid: soc-cve-digest
+        type: webhook
+        settings:
+          url: http://panops-assembler:8080/webhook
+          httpMethod: POST
+        disableResolveMessage: true
+
+  - orgId: 1
+    name: email-critical
+    receivers:
+      - uid: email-critical
+        type: email
+        settings:
+          addresses: CHANGE_ME_ALERT_EMAIL
+        disableResolveMessage: true

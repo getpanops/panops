@@ -1,0 +1,76 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: PanOps - Infrastructure
+    folder: SRE Alerts
+    interval: 1m
+    rules:
+      - uid: panops-assembler-down
+        title: PanOps Assembler Down
+        condition: A
+        labels:
+          severity: critical
+          team: noc
+        annotations:
+          summary: "PanOps assembler is unavailable"
+          description: "The PanOps assembler deployment has no available replicas. Alert classification, remediation, and Matrix notifications are suspended."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kube_deployment_status_replicas_available{namespace="panops",deployment="panops-assembler"} == 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+
+      - uid: panops-heartbeat-missing
+        title: PanOps Heartbeat Missing
+        condition: A
+        labels:
+          severity: critical
+          team: noc
+        annotations:
+          summary: "PanOps assembler heartbeat not seen in 15 minutes"
+          description: "No heartbeat row written to panops.happenings in the last 15 minutes. The assembler may be crashed, stuck in a poll loop hang, or unable to reach ClickHouse."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: clickhouse
+            model:
+              rawSql: |
+                SELECT count() AS cnt
+                FROM panops.happenings
+                WHERE classifier_route = 'heartbeat'
+                  AND opened_at > now() - INTERVAL 15 MINUTE
+              format: table
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 0s
+
+      - uid: panops-llm-jobs-failing
+        title: PanOps LLM Jobs Failing
+        condition: A
+        labels:
+          severity: warning
+          team: noc
+        annotations:
+          summary: "PanOps LLM jobs are failing repeatedly"
+          description: "More than 3 panops-llm-* Jobs have failed in the last hour. The LLM circuit breaker may have opened. Novel happenings are not receiving LLM analysis."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum(increase(kube_job_failed{namespace="panops",job_name=~"panops-llm-.*"}[1h])) > 3
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0m

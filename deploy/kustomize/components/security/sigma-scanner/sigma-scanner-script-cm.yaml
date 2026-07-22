@@ -1,0 +1,225 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigma-scanner-script
+  namespace: security
+data:
+  sigma-scanner.py: |
+    #!/usr/bin/env python3
+    import os, sys, json, re, datetime, time, urllib.request, urllib.parse, hashlib
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("pyyaml required")
+
+    LOKI_URL   = os.environ.get("LOKI_URL", "http://gigapipe.observability.svc.cluster.local:3100")
+    CH_URL     = os.environ.get("CH_URL", "http://observability-clickhouse-clickhouse-headless.observability.svc.cluster.local:8123")
+    RULES_DIR  = os.environ.get("RULES_DIR", "/etc/sigma/rules")
+    LOOK_BACK  = int(os.environ.get("LOOK_BACK_MINUTES", "6"))
+    LOKI_LIMIT = int(os.environ.get("LOKI_LIMIT", "500"))
+
+    CREATE_TABLE = """
+    CREATE TABLE IF NOT EXISTS qryn.sigma_matches (
+        event_hash UInt64 DEFAULT 0,
+        timestamp  DateTime64(9) CODEC(DoubleDelta),
+        rule_id    String,
+        rule_title String,
+        rule_level LowCardinality(String),
+        rule_tags  Array(String),
+        mitre      LowCardinality(String),
+        log_string String,
+        labels     String,
+        namespace  LowCardinality(String),
+        pod_name   String
+    ) ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (timestamp, rule_level, rule_id)
+    TTL toDateTime(timestamp) + INTERVAL 30 DAY
+    SETTINGS ttl_only_drop_parts = 1
+    """
+
+    INSERT_SQL = (
+        "INSERT INTO qryn.sigma_matches "
+        "(event_hash,timestamp,rule_id,rule_title,rule_level,rule_tags,mitre,log_string,labels,namespace,pod_name) "
+        "FORMAT JSONEachRow\n"
+    )
+
+    def ch_exec(sql):
+        data = sql.encode()
+        req = urllib.request.Request(CH_URL, data=data, method="POST")
+        req.add_header("Content-Type", "text/plain")
+        req.add_header("X-ClickHouse-User", os.environ.get("CH_USER", "default"))
+        req.add_header("X-ClickHouse-Key",  os.environ.get("CH_PASSWORD", ""))
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.read().decode()
+
+    def ch_query(sql):
+        data = (sql.strip() + " FORMAT JSON").encode()
+        req = urllib.request.Request(CH_URL, data=data, method="POST")
+        req.add_header("Content-Type", "text/plain")
+        req.add_header("X-ClickHouse-User", os.environ.get("CH_USER", "default"))
+        req.add_header("X-ClickHouse-Key",  os.environ.get("CH_PASSWORD", ""))
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read()).get("data", [])
+
+    def ch_query_raw(sql, start_ns, end_ns):
+        """Execute x-panops-chsql with {start_ns}/{end_ns} substituted."""
+        filled = sql.replace("{start_ns}", str(start_ns)).replace("{end_ns}", str(end_ns))
+        data = filled.strip().encode()
+        req = urllib.request.Request(CH_URL, data=data, method="POST")
+        req.add_header("Content-Type", "text/plain")
+        req.add_header("X-ClickHouse-User", os.environ.get("CH_USER", "default"))
+        req.add_header("X-ClickHouse-Key",  os.environ.get("CH_PASSWORD", ""))
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = json.loads(r.read())
+            results = []
+            for row in body.get("data", []):
+                ts_ns = int(row.get("timestamp_ns", 0))
+                results.append({
+                    "ts_ns":      ts_ns,
+                    "labels":     "{}",
+                    "log_string": row.get("string", "")[:4096],
+                    "namespace":  "",
+                    "pod_name":   "",
+                })
+            return results
+        except Exception as e:
+            print(f"  WARN ch_query failed: {e}", flush=True)
+            return []
+
+    def loki_query(logql, start_ns, end_ns):
+        params = urllib.parse.urlencode({
+            "query": logql, "start": str(start_ns), "end": str(end_ns),
+            "limit": str(LOKI_LIMIT), "direction": "forward",
+        })
+        url = f"{LOKI_URL}/loki/api/v1/query_range?{params}"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                data = json.loads(r.read())
+        except Exception as e:
+            print(f"  WARN loki query failed: {e}", flush=True)
+            return []
+        results = []
+        for stream in data.get("data", {}).get("result", []):
+            lbls = stream.get("stream", {})
+            ns   = lbls.get("k8s_namespace_name", lbls.get("namespace", ""))
+            for ts_str, line in stream.get("values", []):
+                results.append({
+                    "ts_ns":      int(ts_str),
+                    "labels":     json.dumps(lbls),
+                    "log_string": line,
+                    "namespace":  ns,
+                    "pod_name":   lbls.get("pod", lbls.get("k8s_pod_name", "")),
+                })
+        return results
+
+    def event_hash(rule_id, namespace, ts_ns):
+        """Stable dedup key: rule + namespace + 1-minute time bucket."""
+        minute_bucket = ts_ns // 60_000_000_000
+        key = f"{rule_id}:{namespace}:{minute_bucket}"
+        return int(hashlib.sha256(key.encode()).hexdigest()[:16], 16) & 0xFFFFFFFFFFFFFFFF
+
+    def existing_hashes(hashes, since_ns):
+        """Return set of event_hash values already in sigma_matches within the look-back window."""
+        if not hashes:
+            return set()
+        since_dt = datetime.datetime.utcfromtimestamp(since_ns / 1e9).strftime("%Y-%m-%d %H:%M:%S")
+        hash_list = ",".join(str(h) for h in hashes)
+        try:
+            rows = ch_query(
+                f"SELECT DISTINCT event_hash FROM qryn.sigma_matches "
+                f"WHERE timestamp > toDateTime64('{since_dt}', 9) "
+                f"AND event_hash IN ({hash_list})"
+            )
+            return {int(r["event_hash"]) for r in rows}
+        except Exception as e:
+            print(f"  WARN dedup check failed: {e}", flush=True)
+            return set()
+
+    def ch_insert(rows):
+        if not rows:
+            return
+        body = INSERT_SQL + "\n".join(json.dumps(r) for r in rows)
+        ch_exec(body)
+
+    def main():
+        print("sigma-scanner starting", flush=True)
+        try:
+            ch_exec(CREATE_TABLE)
+        except Exception as e:
+            print(f"ERROR: cannot init sigma_matches: {e}", file=sys.stderr, flush=True)
+            sys.exit(1)
+
+        now_ns   = int(time.time() * 1e9)
+        start_ns = now_ns - (LOOK_BACK * 60 * 1_000_000_000)
+        total    = 0
+
+        for filename in sorted(os.listdir(RULES_DIR)):
+            if not filename.endswith(".yaml"):
+                continue
+            with open(os.path.join(RULES_DIR, filename)) as f:
+                rule = yaml.safe_load(f)
+
+            chsql  = rule.get("x-panops-chsql")
+            logql  = rule.get("x-panops-logql")
+            if not chsql and not logql:
+                continue
+
+            rule_id    = rule.get("id", filename)
+            rule_title = rule.get("title", filename)
+            rule_level = rule.get("level", "unknown")
+            rule_tags  = rule.get("tags", [])
+            mitre      = next((t for t in rule_tags if re.match(r"attack\.t\d+", t, re.I)), "")
+
+            print(f"scanning [{('CH' if chsql else 'Loki')}]: {rule_title}", flush=True)
+            if chsql:
+                matches = ch_query_raw(chsql, start_ns, now_ns)
+            else:
+                matches = loki_query(logql, start_ns, now_ns)
+
+            if not matches:
+                continue
+
+            # Dedup: compute event_hash for each match, filter out existing ones
+            for m in matches:
+                m["_hash"] = event_hash(rule_id, m["namespace"], m["ts_ns"])
+            seen = existing_hashes({m["_hash"] for m in matches}, start_ns)
+            new_matches = [m for m in matches if m["_hash"] not in seen]
+
+            if not new_matches:
+                print(f"  {len(matches)} match(es) all already recorded (dedup)", flush=True)
+                continue
+
+            rows = []
+            for m in new_matches:
+                ts = datetime.datetime.utcfromtimestamp(m["ts_ns"] / 1e9)
+                rows.append({
+                    "event_hash": m["_hash"],
+                    "timestamp":  ts.strftime("%Y-%m-%d %H:%M:%S.%f") + "000",
+                    "rule_id": rule_id, "rule_title": rule_title,
+                    "rule_level": rule_level, "rule_tags": rule_tags,
+                    "mitre": mitre, "log_string": m["log_string"][:4096],
+                    "labels": m["labels"], "namespace": m["namespace"],
+                    "pod_name": m["pod_name"],
+                })
+                print(json.dumps({
+                    "sigma_match": True, "rule_id": rule_id,
+                    "rule_title": rule_title, "rule_level": rule_level,
+                    "mitre": mitre, "namespace": m["namespace"],
+                    "pod_name": m["pod_name"],
+                    "ts": ts.isoformat() + "Z",
+                }), flush=True)
+
+            if rows:
+                try:
+                    ch_insert(rows)
+                    print(f"  inserted {len(rows)} new row(s) ({len(matches)-len(rows)} deduped)", flush=True)
+                except Exception as e:
+                    print(f"  ERROR inserting: {e}", file=sys.stderr, flush=True)
+                total += len(rows)
+
+        print(f"sigma-scanner done. total_new={total}", flush=True)
+
+    if __name__ == "__main__":
+        main()

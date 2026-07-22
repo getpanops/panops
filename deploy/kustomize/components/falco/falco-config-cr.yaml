@@ -1,0 +1,15 @@
+apiVersion: artifact.falcosecurity.dev/v1alpha1
+kind: Config
+metadata:
+  name: falco-output
+  namespace: security
+spec:
+  config:
+    json_output: true
+    json_include_output_property: true
+    log_level: info
+    log_format: json
+    http_output:
+      enabled: true
+      url: "http://falco-talon.security.svc.cluster.local:2803"
+  priority: 60

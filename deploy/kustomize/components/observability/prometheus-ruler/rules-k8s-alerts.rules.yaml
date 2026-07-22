@@ -1,0 +1,66 @@
+groups:
+- interval: 30s
+  name: kubernetes-alerts
+  rules:
+  - alert: KubePodCrashLooping
+    annotations:
+      description: Pod {{ $labels.namespace }}/{{ $labels.pod }} container {{ $labels.container
+        }} has restarted {{ $value | humanize }} times in the last 5 minutes.
+      summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash-looping
+    expr: rate(kube_pod_container_status_restarts_total[5m]) * 60 * 5 > 5
+    for: 5m
+    labels:
+      severity: critical
+  - alert: KubePodNotReady
+    annotations:
+      description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready
+        state for more than 15 minutes.
+      summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready
+    expr: min by (namespace, pod) (kube_pod_status_ready{condition="true"}) == 0 and
+      kube_pod_status_phase{phase!~"Succeeded|Completed"} == 1
+    for: 15m
+    labels:
+      severity: critical
+  - alert: KubeDeploymentRolloutStuck
+    annotations:
+      description: Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has
+        not progressed in the last 15 minutes.
+      summary: Deployment {{ $labels.namespace }}/{{ $labels.deployment }} rollout
+        appears stuck
+    expr: kube_deployment_status_observed_generation{namespace!=""} != on(deployment,namespace)
+      kube_deployment_metadata_generation
+    for: 15m
+    labels:
+      severity: warning
+  - alert: KubePersistentVolumeFillingUp
+    annotations:
+      description: PersistentVolume {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim
+        }} has less than 10% free space ({{ $value | humanizePercentage }} remaining).
+      summary: PersistentVolume {{ $labels.persistentvolumeclaim }} is almost full
+    expr: (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes)
+      < 0.1 and kubelet_volume_stats_inodes_free / kubelet_volume_stats_inodes > 0.03
+    for: 5m
+    labels:
+      severity: critical
+  - alert: KubeStatefulSetUpdateNotRolledOut
+    annotations:
+      description: StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} has
+        not successfully rolled out in the last 15 minutes.
+      summary: StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} update
+        is not rolled out
+    expr: kube_statefulset_status_updated_replicas{namespace!=""} != on(statefulset,namespace)
+      kube_statefulset_status_replicas_ready
+    for: 15m
+    labels:
+      severity: warning
+  - alert: KubeJobFailed
+    annotations:
+      description: 'Kubernetes Job {{ $labels.namespace }}/{{ $labels.job_name }}
+        failed with status: {{ $labels.job_status }}. Note: CronJob-created Jobs may
+        fail and re-run as expected.'
+      summary: Kubernetes Job {{ $labels.namespace }}/{{ $labels.job_name }} failed
+    expr: kube_job_status_failed{namespace!=""} > 0 and on(job_name, namespace) kube_job_status_active
+      == 0
+    for: 5m
+    labels:
+      severity: warning

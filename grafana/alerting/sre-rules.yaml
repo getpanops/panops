@@ -1,0 +1,139 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: SRE - Kubernetes
+    folder: SRE Alerts
+    interval: 1m
+    rules:
+      - uid: sre-pod-oomkill
+        title: Pod OOMKilled
+        condition: A
+        labels:
+          severity: warning
+          source: sre
+        annotations:
+          summary: "Pod {{ $labels.pod }} OOMKilled in {{ $labels.namespace }}"
+          description: "Container memory limit hit. Check limits or investigate leak."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-pod-oomkill.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: increase(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[5m]) > 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sre-pod-crashloop
+        title: Pod CrashLoopBackOff
+        condition: A
+        labels:
+          severity: warning
+          source: sre
+        annotations:
+          summary: "Pod {{ $labels.pod }} crash-looping in {{ $labels.namespace }}"
+          description: "Pod has restarted more than 5 times in the last hour."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-pod-crashloop.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+
+      - uid: sre-pvc-capacity
+        title: PVC Near Capacity
+        condition: A
+        labels:
+          severity: warning
+          source: sre
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+          description: "PVC approaching capacity — consider expanding or cleaning up."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-pvc-capacity.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+
+      - uid: sre-node-memory
+        title: Node Memory Pressure
+        condition: A
+        labels:
+          severity: warning
+          source: sre
+        annotations:
+          summary: "Node {{ $labels.node }} memory > 90%"
+          description: "High memory utilisation — risk of OOMKill on running pods."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-node-memory.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: |
+                (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+
+      - uid: sre-kube-bench-regression
+        title: kube-bench CIS Failed Check Regression
+        condition: C
+        labels:
+          severity: warning
+          source: sre
+        annotations:
+          summary: "kube-bench: CIS failed check count increased"
+          description: "More CIS benchmark checks are failing compared to 24 hours ago. Review recent cluster changes."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-kube-bench-regression.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 90000, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({instance=~"validation/kube-bench.*"} |= "\"status\":\"FAIL\"" [25h]))
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange: { from: 90000, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({instance=~"validation/kube-bench.*"} |= "\"status\":\"FAIL\"" [49h] offset 24h))
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: math
+              expression: "$A - $B"
+        noDataState: OK
+        execErrState: OK
+        for: 5m

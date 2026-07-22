@@ -1,0 +1,65 @@
+name: panops-loki
+priority: 20
+
+# Maps Sigma standard field names to Falco JSON output fields as they
+# appear in Loki after `| json`. Stream selector targets the Falco log
+# stream written by Alloy from falco stdout.
+
+transformations:
+  # --- Field mappings: Sigma field → Falco output_fields key ---
+  - id: map-process-fields
+    type: field_name_mapping
+    mapping:
+      CommandLine: output_fields["proc.cmdline"]
+      Image: output_fields["proc.name"]
+      ParentImage: output_fields["proc.pname"]
+      ParentCommandLine: output_fields["proc.pcmdline"]
+      User: output_fields["user.name"]
+      ProcessId: output_fields["proc.pid"]
+
+  - id: map-container-fields
+    type: field_name_mapping
+    mapping:
+      ContainerImage: output_fields["container.image.repository"]
+      ContainerName: output_fields["container.name"]
+      ContainerId: output_fields["container.id"]
+      Namespace: output_fields["k8s.ns.name"]
+      PodName: output_fields["k8s.pod.name"]
+
+  - id: map-network-fields
+    type: field_name_mapping
+    mapping:
+      DestinationIp: output_fields["fd.rip"]
+      DestinationPort: output_fields["fd.rport"]
+      DestinationHostname: output_fields["fd.rip.name"]
+
+  - id: map-file-fields
+    type: field_name_mapping
+    mapping:
+      TargetFilename: output_fields["fd.name"]
+
+  # --- Logsource mapping: point all linux/container rules at Falco stream ---
+  - id: loki-stream-selector
+    type: set_state
+    key: stream_selector
+    val: '{source="security/falco"}'
+    rule_conditions:
+      - type: logsource
+        category: process_creation
+        product: linux
+  - id: loki-stream-selector-network
+    type: set_state
+    key: stream_selector
+    val: '{source="security/falco"}'
+    rule_conditions:
+      - type: logsource
+        category: network_connection
+        product: linux
+  - id: loki-stream-selector-file
+    type: set_state
+    key: stream_selector
+    val: '{source="security/falco"}'
+    rule_conditions:
+      - type: logsource
+        category: file_event
+        product: linux

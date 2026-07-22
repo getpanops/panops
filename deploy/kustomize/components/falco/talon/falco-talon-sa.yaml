@@ -1,0 +1,14 @@
+---
+# Source: falco-talon/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: falco-talon
+  namespace: security
+  labels:
+    helm.sh/chart: falco-talon-0.4.1
+    app.kubernetes.io/part-of: falco-talon
+    app.kubernetes.io/managed-by: falco-talon
+    app.kubernetes.io/name: falco-talon
+    app.kubernetes.io/instance: falco-talon
+    app.kubernetes.io/version: 0.3.0

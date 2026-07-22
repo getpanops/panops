@@ -1,0 +1,18 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: operator-ingress
+  namespace: observability
+  annotations:
+    description: "Allow ClickHouse operator to manage ClickHouse and Keeper clusters"
+spec:
+  endpointSelector:
+    matchExpressions:
+    - key: clickhouse.com/app
+      operator: Exists
+
+  ingress:
+  # Allow ClickHouse operator to connect for management
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: clickhouse-operator-system

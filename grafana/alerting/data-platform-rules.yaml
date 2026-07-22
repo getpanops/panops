@@ -1,0 +1,50 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: SRE - Data Platform
+    folder: SRE Alerts
+    interval: 2m
+    rules:
+      - uid: sre-cnpg-postgres-not-ready
+        title: CNPG Postgres Not Ready
+        condition: A
+        labels:
+          severity: critical
+          team: sre
+        annotations:
+          summary: "CNPG postgres pod not ready in {{ $labels.namespace }}"
+          description: "Pod {{ $labels.pod }} container postgres is not ready. The CNPG cluster may have lost its primary or a standby has a WAL divergence. PanOps will attempt to delete the unhealthy pod to trigger operator re-provisioning."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - kube_pod_container_status_ready{container="postgres",exported_namespace="",namespace!~"kube-system|kube-public|kube-node-lease|cnpg-system|cnpg-operator"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+
+      - uid: sre-redis-sentinel-unavailable
+        title: Redis Sentinel Unavailable
+        condition: A
+        labels:
+          severity: critical
+          team: sre
+        annotations:
+          summary: "Redis sentinel pod not ready in {{ $labels.namespace }}"
+          description: "Pod {{ $labels.pod }} sentinel container is not ready. If quorum is lost, Redis will refuse writes. PanOps will delete the unhealthy sentinel pod to trigger operator re-election."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - kube_pod_container_status_ready{container="sentinel",exported_namespace="",namespace!~"kube-system|kube-public|kube-node-lease"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m

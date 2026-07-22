@@ -1,0 +1,28 @@
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: cert-manager-renewals
+  namespace: cert-manager
+  labels:
+    team: platform
+    tier: critical
+spec:
+  target: "99"
+  window: 4w
+  description: "99% of cert-manager ACME renewal requests succeed"
+  indicator:
+    ratio:
+      errors:
+        metric: certmanager_http_acme_client_request_count{status="error"}
+      total:
+        metric: certmanager_http_acme_client_request_count
+  alerting:
+    name: CertManagerRenewalFailure
+    labels:
+      severity: critical
+    page:
+      labels:
+        severity: critical
+    ticket:
+      labels:
+        severity: warning

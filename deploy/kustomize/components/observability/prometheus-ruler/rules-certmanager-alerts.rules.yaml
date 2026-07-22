@@ -1,0 +1,39 @@
+groups:
+- interval: 30s
+  name: cert-manager-alerts
+  rules:
+  - alert: CertificateExpiringSoon
+    annotations:
+      description: Certificate {{ $labels.namespace }}/{{ $labels.name }} will expire
+        in {{ $value | humanizeDuration }}. Ensure cert-manager renewal is working
+        correctly.
+      summary: Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in
+        less than 7 days
+    expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 *
+      3600
+    for: 5m
+    labels:
+      severity: warning
+  - alert: CertificateExpiryCritical
+    annotations:
+      description: Certificate {{ $labels.namespace }}/{{ $labels.name }} will expire
+        CRITICALLY SOON in {{ $value | humanizeDuration }}. Immediate renewal action
+        required.
+      summary: Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in
+        less than 2 days
+    expr: certmanager_certificate_expiration_timestamp_seconds - time() < 2 * 24 *
+      3600
+    for: 5m
+    labels:
+      severity: critical
+  - alert: CertificateRenewalFailed
+    annotations:
+      description: 'cert-manager is experiencing failures during ACME HTTP requests.
+        Check cert-manager logs and ACME provider status. Recent failures: {{ $value
+        | humanize }}'
+      summary: cert-manager ACME renewal is failing
+    expr: increase(certmanager_http_acme_client_request_count{status=~"4..|5.."}[1h])
+      > 0
+    for: 10m
+    labels:
+      severity: warning

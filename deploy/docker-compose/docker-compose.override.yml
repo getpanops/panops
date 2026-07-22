@@ -1,0 +1,26 @@
+# Local dev override — fixes DNS for bridge network on this host
+# Not committed; applies only when docker compose finds it automatically
+x-dns: &dns
+  dns:
+    - 10.10.10.10
+    - 1.1.1.1
+
+services:
+  clickhouse:
+    <<: *dns
+  gigapipe:
+    <<: *dns
+  otelcol:
+    <<: *dns
+  grafana:
+    <<: *dns
+  pyrra:
+    <<: *dns
+  panops-assembler:
+    <<: *dns
+  panops-schema:
+    <<: *dns
+  drain3-miner:
+    <<: *dns
+  sigma-scanner:
+    <<: *dns

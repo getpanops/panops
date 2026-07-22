@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pyrra
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pyrra-kubernetes
+rules:
+- apiGroups: [monitoring.coreos.com]
+  resources: [prometheusrules]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: [monitoring.coreos.com]
+  resources: [prometheusrules/status]
+  verbs: [get]
+- apiGroups: [pyrra.dev]
+  resources: [servicelevelobjectives]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: [pyrra.dev]
+  resources: [servicelevelobjectives/status]
+  verbs: [get, patch, update]
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch]
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [get, list, watch]
+- apiGroups: [coordination.k8s.io]
+  resources: [leases]
+  verbs: [create, get, list, patch, update, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pyrra-kubernetes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pyrra-kubernetes
+subjects:
+- kind: ServiceAccount
+  name: pyrra
+  namespace: observability

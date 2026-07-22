@@ -1,0 +1,169 @@
+---
+# Source: falco-talon/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: falco-talon
+  namespace: security
+  labels:
+    app.kubernetes.io/name: falco-talon
+    helm.sh/chart: falco-talon-0.4.1
+    app.kubernetes.io/instance: falco-talon
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - update
+      - patch
+      - delete
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - pods/ephemeralcontainers
+    verbs:
+      - patch
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - update
+      - patch
+      - watch
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - pods/log
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - pods/exec
+    verbs:
+      - get
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - pods/eviction
+    verbs:
+      - get
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - update
+      - patch
+      - create
+  - apiGroups:
+      - "apps"
+    resources:
+      - daemonsets
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - "apps"
+    resources:
+      - deployments
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - "apps"
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - "apps"
+    resources:
+      - statefulsets
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - "networking.k8s.io"
+    resources:
+      - networkpolicies
+    verbs:
+      - get
+      - update
+      - patch
+      - create
+  - apiGroups:
+      - "projectcalico.org"
+    resources:
+      - caliconetworkpolicies
+    verbs:
+      - get
+      - update
+      - patch
+      - create
+  - apiGroups:
+      - "cilium.io"
+    resources:
+      - ciliumnetworkpolicies
+    verbs:
+      - get
+      - update
+      - patch
+      - create
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - roles
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - clusterroles
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - delete
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - get
+      - update
+      - patch
+      - watch
+      - create

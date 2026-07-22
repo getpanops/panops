@@ -1,0 +1,41 @@
+---
+# Step 1: operators (CRDs + controllers, no app dependencies)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: panops-operators
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: panops
+  path: ./deploy/kustomize/operators
+  prune: true
+  wait: true
+  timeout: 5m
+---
+# Step 2: full component stack (depends on operators being ready)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: panops-stack
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: panops
+  path: ./deploy/kustomize/components
+  prune: true
+  dependsOn:
+    - name: panops-operators
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: panops-assembler
+      namespace: panops
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: grafana
+      namespace: observability

@@ -1,0 +1,32 @@
+apiVersion: artifact.falcosecurity.dev/v1alpha1
+kind: Rulesfile
+metadata:
+  name: falco-custom-rules
+  namespace: security
+spec:
+  # Priority 90 > base rules (50) so overrides load after; max valid value is 99
+  priority: 90
+  inlineRules:
+    # Example: some apps legitimately write and execute temporary helper binaries under
+    # /tmp/<app>-* as part of normal operation. Add an exception per workload as needed.
+    # Replace the container.name / path prefix below with your own workload's values.
+    - rule: Drop and execute new binary in container
+      exceptions:
+        - name: app_tmp_helpers
+          fields:
+            - container.name
+            - proc.exepath
+          comps:
+            - "="
+            - startswith
+          values:
+            - - my-app
+              - /tmp/my-app-
+      append: true
+    # CNI plugins (/opt/cni/bin/ and /hostroot/opt/cni/bin/ for multus) are host-provisioned
+    # binaries invoked by containerd and multus-daemon during normal pod network setup.
+    - rule: Drop and execute new binary in container
+      condition: >-
+        and not proc.exepath startswith "/opt/cni/bin/"
+        and not proc.exepath startswith "/hostroot/opt/cni/bin/"
+      append: true

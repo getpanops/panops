@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: panops-model-download
+  namespace: panops
+  annotations:
+    description: "One-shot job to download Qwen2.5-3B-Instruct-Q4_K_M.gguf to the model PVC"
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: downloader
+          image: python:3.12-slim
+          command:
+            - python3
+            - -c
+            - |
+              import os, sys, urllib.request
+              MODEL_FILE = "/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+              if os.path.exists(MODEL_FILE):
+                  size = os.path.getsize(MODEL_FILE)
+                  print(f"Model already present ({size/1e9:.2f} GB), skipping.", flush=True)
+                  sys.exit(0)
+              URL = ("https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF"
+                     "/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf")
+              TMP = MODEL_FILE + ".tmp"
+              print(f"Downloading {URL}", flush=True)
+              def progress(count, block_size, total):
+                  if total > 0 and count % 100 == 0:
+                      pct = min(100, count * block_size * 100 // total)
+                      print(f"  {pct}% ({count*block_size/1e9:.2f}/{total/1e9:.2f} GB)", flush=True)
+              urllib.request.urlretrieve(URL, TMP, reporthook=progress)
+              os.rename(TMP, MODEL_FILE)
+              size = os.path.getsize(MODEL_FILE)
+              print(f"Done. {size/1e9:.2f} GB", flush=True)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: panops-model-pvc

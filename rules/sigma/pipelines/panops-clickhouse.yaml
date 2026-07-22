@@ -1,0 +1,38 @@
+name: panops-clickhouse
+priority: 20
+transformations:
+  - id: field_mapping_process
+    type: field_name_mapping
+    mapping:
+      Image: fields.Image
+      CommandLine: fields.CommandLine
+      ParentImage: fields.ParentImage
+      User: fields.User
+      DestinationPort: fields.DestPort
+      DestinationIp: fields.DestIp
+      SourcePort: fields.SourcePort
+      SourceIp: fields.SourceIp
+      EventID: fields.EventID
+      SubjectUserName: fields.SubjectUserName
+      TargetUserName: fields.TargetUserName
+      ContainerName: fields.ContainerName
+      Container: fields.Container
+      Namespace: fields.Namespace
+  - id: logsource_linux
+    type: logsource_condition
+    logsources:
+      linux:
+        product: linux
+    table: qryn.logs
+  - id: logsource_windows
+    type: logsource_condition
+    logsources:
+      windows:
+        product: windows
+    table: qryn.logs
+  - id: logsource_falco
+    type: logsource_condition
+    logsources:
+      falco:
+        product: falco
+    table: qryn.logs

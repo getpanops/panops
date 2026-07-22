@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: observability
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      serviceAccountName: grafana
+      containers:
+      - name: grafana
+        image: index.docker.io/grafana/grafana:13.0.1
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+        env:
+        # Keep admin user as emergency backup (disable_login_form = false)
+        - name: GF_SECURITY_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin
+              key: admin-user
+        - name: GF_SECURITY_ADMIN_PASSWORD__FILE
+          value: /mnt/secrets/admin-password
+        # OIDC configuration
+        - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: grafana-oidc
+              key: client-secret
+        - name: GF_PATHS_CONFIG
+          value: /etc/grafana/grafana.ini
+        - name: GF_PATHS_DATA
+          value: /var/lib/grafana
+        - name: GF_PATHS_PROVISIONING
+          value: /etc/grafana/provisioning
+        - name: GF_SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-smtp
+              key: password
+        volumeMounts:
+        - name: config
+          mountPath: /etc/grafana/grafana.ini
+          subPath: grafana.ini
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboard-provisioner
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboards-panops
+          mountPath: /etc/grafana/dashboards/panops
+        - name: dashboards-mixins
+          mountPath: /etc/grafana/dashboards/mixins
+        - name: admin-secrets
+          mountPath: /mnt/secrets
+          readOnly: true
+        - name: data
+          mountPath: /var/lib/grafana
+        - name: alerting
+          mountPath: /etc/grafana/provisioning/alerting
+
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-ini
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: dashboard-provisioner
+        configMap:
+          name: grafana-dashboard-provisioner
+      - name: dashboards-panops
+        configMap:
+          name: grafana-dashboards-panops
+      - name: dashboards-mixins
+        configMap:
+          name: grafana-dashboards-mixins
+      - name: admin-secrets
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: grafana-secrets
+      - name: alerting
+        projected:
+          sources:
+          - configMap:
+              name: grafana-alerting-contactpoints
+          - configMap:
+              name: grafana-alerting-rules
+      - name: data
+        emptyDir: {}

@@ -1,0 +1,40 @@
+title: Interactive Shell Spawned in Container
+id: a5b3c2d1-1234-5678-abcd-ef0123456789
+status: experimental
+description: Detects an interactive shell process spawned inside a running container, which may indicate hands-on-keyboard attacker activity post-exploitation.
+author: panops
+date: 2026-06-27
+references:
+  - https://attack.mitre.org/techniques/T1059/004/
+tags:
+  - attack.execution
+  - attack.t1059.004
+  - attack.t1609
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection:
+    Image|endswith:
+      - '/sh'
+      - '/bash'
+      - '/zsh'
+      - '/dash'
+      - '/fish'
+    ContainerName|contains: '*'
+  condition: selection
+falsepositives:
+  - Container init scripts that use shell as entrypoint
+  - Legitimate exec sessions by operators (kubectl exec)
+level: high
+x-panops-logql: '{exporter="loki", event_class="runtime-security", job="falco"} |= "Terminal shell in container"'
+x-panops-chsql: |
+  SELECT string, timestamp_ns FROM qryn.samples_v3
+  WHERE fingerprint IN (
+      SELECT fingerprint FROM qryn.time_series
+      WHERE labels LIKE '%"job":"falco"%'
+        AND labels LIKE '%"event_class":"runtime-security"%'
+  )
+  AND string LIKE '%Terminal shell in container%'
+  AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+  LIMIT 500

@@ -1,0 +1,28 @@
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: grafana-availability
+  namespace: observability
+  labels:
+    team: platform
+    tier: important
+spec:
+  target: "99"
+  window: 4w
+  description: "99% of Grafana HTTP requests succeed"
+  indicator:
+    ratio:
+      errors:
+        metric: grafana_http_request_duration_seconds_count{status_code=~"5.."}
+      total:
+        metric: grafana_http_request_duration_seconds_count
+  alerting:
+    name: GrafanaHighErrorRate
+    labels:
+      severity: warning
+    page:
+      labels:
+        severity: warning
+    ticket:
+      labels:
+        severity: info

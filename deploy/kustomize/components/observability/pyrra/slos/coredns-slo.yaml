@@ -1,0 +1,28 @@
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: coredns-availability
+  namespace: dns-system
+  labels:
+    team: platform
+    tier: critical
+spec:
+  target: "99.9"
+  window: 4w
+  description: "99.9% of CoreDNS responses are non-SERVFAIL"
+  indicator:
+    ratio:
+      errors:
+        metric: coredns_dns_responses_total{rcode="SERVFAIL"}
+      total:
+        metric: coredns_dns_responses_total
+  alerting:
+    name: CoreDNSAvailability
+    labels:
+      severity: warning
+    page:
+      labels:
+        severity: critical
+    ticket:
+      labels:
+        severity: warning

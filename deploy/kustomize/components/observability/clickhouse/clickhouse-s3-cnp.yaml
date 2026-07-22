@@ -1,0 +1,20 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: clickhouse-s3-egress
+  namespace: observability
+  annotations:
+    description: "Allow ClickHouse pods to reach Ceph RGW S3 endpoint for cold-tier storage"
+spec:
+  endpointSelector:
+    matchLabels:
+      clickhouse.com/role: clickhouse-server
+  egress:
+  # Replace with the CIDR of your S3/object-storage endpoint (Ceph RGW, MinIO, etc.)
+  # Using CIDR to avoid FQDN DNS-proxy dependency.
+  - toCIDR:
+    - CHANGE_ME_S3_CIDR/24
+    toPorts:
+    - ports:
+      - port: "7480"
+        protocol: TCP

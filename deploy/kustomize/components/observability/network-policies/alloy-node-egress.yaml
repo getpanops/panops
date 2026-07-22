@@ -1,0 +1,25 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: alloy-node-egress
+  namespace: observability
+  annotations:
+    description: "Allow Alloy node DaemonSet to scrape kubelet metrics"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: alloy-node
+
+  egress:
+  # Allow scraping kubelet metrics on nodes
+  - toEntities:
+    - host
+    - remote-node
+    toPorts:
+    - ports:
+      - port: "10250"
+        protocol: TCP
+
+  # Allow reading pod logs via API server proxy (pods/log)
+  - toEntities:
+    - kube-apiserver

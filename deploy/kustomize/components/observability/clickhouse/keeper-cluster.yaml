@@ -1,0 +1,26 @@
+apiVersion: clickhouse.com/v1alpha1
+kind: KeeperCluster
+metadata:
+  name: observability-keeper
+  namespace: observability
+spec:
+  replicas: 1
+
+  # Storage on Ceph RBD NVMe pool
+  dataVolumeClaimSpec:
+    storageClassName: rbd-nvme
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 2Gi
+
+  # Container resources
+  containerTemplate:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

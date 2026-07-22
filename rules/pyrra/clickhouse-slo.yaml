@@ -1,0 +1,28 @@
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: clickhouse-query-success
+  namespace: observability
+  labels:
+    team: platform
+    tier: critical
+spec:
+  target: "99"
+  window: 4w
+  description: "99% of ClickHouse queries complete without exception"
+  indicator:
+    ratio:
+      errors:
+        metric: chi_clickhouse_event_query{status=~"ExceptionBeforeStart|ExceptionWhileProcessing"}
+      total:
+        metric: chi_clickhouse_event_query
+  alerting:
+    name: ClickHouseQueryErrors
+    labels:
+      severity: warning
+    page:
+      labels:
+        severity: critical
+    ticket:
+      labels:
+        severity: warning

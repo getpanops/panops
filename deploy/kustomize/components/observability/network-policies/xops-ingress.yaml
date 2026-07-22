@@ -1,0 +1,43 @@
+---
+# Allow panops and security namespaces to query ClickHouse HTTP API (port 8123)
+# panops: assembler, schema-init; security: sigma-scanner, baseline-collector
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: clickhouse-panops-ingress
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      clickhouse.com/role: clickhouse-server
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: panops
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: security
+    toPorts:
+    - ports:
+      - port: "8123"
+        protocol: TCP
+---
+# Allow panops and security namespaces to query Loki + Prometheus via gigapipe (port 3100)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gigapipe-panops-ingress
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app: gigapipe
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: panops
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: security
+    toPorts:
+    - ports:
+      - port: "3100"
+        protocol: TCP

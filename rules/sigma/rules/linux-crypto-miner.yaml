@@ -1,0 +1,50 @@
+title: Crypto Miner Process Detected
+id: b6c4d3e2-2345-6789-bcde-f01234567890
+status: experimental
+description: Detects execution of known cryptocurrency mining binaries or processes connecting to mining pools.
+author: panops
+date: 2026-06-27
+references:
+  - https://attack.mitre.org/techniques/T1496/
+tags:
+  - attack.impact
+  - attack.t1496
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection_binary:
+    Image|endswith:
+      - '/xmrig'
+      - '/minerd'
+      - '/cpuminer'
+      - '/ethminer'
+      - '/claymore'
+      - '/nbminer'
+    CommandLine|contains:
+      - 'stratum+'
+      - 'pool.minexmr'
+      - 'xmrpool'
+      - 'moneropool'
+      - '--donate-level'
+      - '-o stratum'
+  condition: selection_binary
+falsepositives:
+  - Security research environments
+level: critical
+x-panops-logql: '{exporter="loki", event_class=~"application|auth"} |~ "xmrig|minerd|cpuminer|ethminer|nbminer|stratum\\+|pool\\.minexmr|xmrpool|moneropool|--donate-level" !~ "executeQuery|TCPHandler|DB::Exception"'
+x-panops-chsql: |
+  SELECT string, timestamp_ns FROM qryn.samples_v3
+  WHERE fingerprint IN (
+      SELECT fingerprint FROM qryn.time_series
+      WHERE (labels LIKE '%"event_class":"application"%' OR labels LIKE '%"event_class":"auth"%')
+  )
+  AND (string LIKE '%xmrig%' OR string LIKE '%minerd%' OR string LIKE '%cpuminer%'
+       OR string LIKE '%ethminer%' OR string LIKE '%nbminer%' OR string LIKE '%stratum+%'
+       OR string LIKE '%pool.minexmr%' OR string LIKE '%xmrpool%' OR string LIKE '%moneropool%'
+       OR string LIKE '%-donate-level%')
+  AND string NOT LIKE '%executeQuery%'
+  AND string NOT LIKE '%TCPHandler%'
+  AND string NOT LIKE '%DB::Exception%'
+  AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+  LIMIT 500

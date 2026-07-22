@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: observability
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://gigapipe.observability.svc.cluster.local:3100
+      isDefault: false
+      editable: false
+      jsonData:
+        maxLines: 1000
+
+    - name: Prometheus
+      uid: prometheus
+      type: prometheus
+      access: proxy
+      url: http://gigapipe.observability.svc.cluster.local:3100
+      isDefault: true
+      editable: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 1m
+
+    - name: Coroot
+      uid: coroot
+      type: prometheus
+      access: proxy
+      url: http://gigapipe.observability.svc.cluster.local:3100
+      isDefault: false
+      editable: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 1m
+
+    - name: Tempo
+      type: tempo
+      access: proxy
+      url: http://gigapipe.observability.svc.cluster.local:3100
+      isDefault: false
+      editable: false
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: '-1h'
+          spanEndTimeShift: '1h'
+          filterByTraceID: true
+          filterBySpanID: false
+        tracesToMetrics:
+          datasourceUid: prometheus
+        serviceMap:
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panops-assembler
+  namespace: panops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: panops-assembler
+  template:
+    metadata:
+      labels:
+        app: panops-assembler
+    spec:
+      serviceAccountName: panops-assembler
+      containers:
+      - name: assembler
+        image: ghcr.io/getpanops/panops/assembler:latest
+        ports:
+        - containerPort: 8080
+          name: webhook
+        env:
+        - name: REMEDIATION_MODE
+          value: "dry-run"
+        - name: STABILIZATION_WAIT_S
+          value: "180"
+        - name: DREAM_START_HOUR
+          value: "2"
+        - name: DREAM_END_HOUR
+          value: "4"
+        - name: LOOKAHEAD_MINUTES
+          value: "60"
+        - name: CH_HOST
+          value: "observability-clickhouse-clickhouse-headless.observability.svc.cluster.local:8123"
+        - name: CH_USER
+          value: "default"
+        - name: CH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-password
+              key: password
+        - name: CH_URL
+          value: "http://$(CH_HOST)/"
+        - name: LOKI_URL
+          value: "http://gigapipe.observability.svc.cluster.local:3100"
+        - name: PROM_URL
+          value: "http://gigapipe.observability.svc.cluster.local:3100"
+        - name: POLL_INTERVAL_S
+          value: "60"
+        - name: LISTEN_PORT
+          value: "8080"
+        - name: OMP_NUM_THREADS
+          value: "1"
+        - name: ONNXRUNTIME_INTRA_OP_NUM_THREADS
+          value: "1"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 15
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 50m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: panops-assembler-script

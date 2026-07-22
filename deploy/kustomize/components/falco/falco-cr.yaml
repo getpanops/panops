@@ -1,0 +1,8 @@
+apiVersion: instance.falcosecurity.dev/v1alpha1
+kind: Falco
+metadata:
+  name: falco
+  namespace: security
+spec: {}
+# Deploys Falco as a DaemonSet using modern_ebpf driver (CO-RE, no kernel module needed).
+# Talos-compatible. Rules and output config are managed via separate Config/RulesFile CRs.

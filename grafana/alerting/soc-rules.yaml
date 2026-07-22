@@ -1,0 +1,183 @@
+apiVersion: 1
+deleteRules:
+  - orgId: 1
+    uid: soc-trivy-critical-cve
+  - orgId: 1
+    uid: soc-trivy-cve-digest
+groups:
+  - orgId: 1
+    name: SOC - Runtime Security
+    folder: SOC Alerts
+    interval: 1m
+    rules:
+      - uid: soc-falco-critical
+        title: Falco Critical/Emergency Event
+        condition: A
+        labels:
+          severity: critical
+          source: security
+        annotations:
+          summary: "Falco {{ $labels.falco_rule }} fired at {{ $labels.falco_priority }}"
+          description: "Runtime security event detected. Review pod and consider Talon response."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-critical.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum by (falco_rule, falco_priority) (count_over_time({source="security/falco", falco_priority=~"Critical|Emergency"}[5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+
+      - uid: soc-falco-error
+        title: Falco Error Priority Sustained
+        condition: A
+        labels:
+          severity: warning
+          source: security
+        annotations:
+          summary: "Falco {{ $labels.falco_rule }} — {{ $value }} Error-priority events in 5m"
+          description: "Multiple error-level Falco detections — may indicate active threat or noisy rule."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-error.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum by (falco_rule) (count_over_time({source="security/falco", falco_priority="Error"}[5m])) > 3
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+
+      - uid: soc-talon-response
+        title: Falco Talon Response Triggered
+        condition: A
+        labels:
+          severity: warning
+          source: security
+        annotations:
+          summary: "Falco Talon terminated or labelled a pod"
+          description: "Automated response fired — review the triggering Falco event and affected workload."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-talon-response.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({source="security/falco-talon"} |= "trigger" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: soc-baseline-anomaly
+        title: Security Baseline Anomaly Detected
+        condition: A
+        labels:
+          severity: warning
+          source: security
+          alert_class: anomaly
+        annotations:
+          summary: "Security metric spike: {{ $labels.metric_name }}"
+          description: "A security metric exceeded 3x its 7-day hourly baseline. Check baseline-collector pod logs in security namespace for details."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-critical.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 7200, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({namespace="security"} |= `"security_anomaly": true` [2h])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: soc-sigma-match-critical
+        title: Sigma Critical Match Detected
+        condition: A
+        labels:
+          severity: critical
+          source: security
+          alert_class: sigma
+        annotations:
+          summary: "Sigma rule matched: {{ $labels.rule_title }}"
+          description: "sigma-scanner detected a critical/high-level Sigma rule match. Check security/sigma-scanner pod logs and sigma_matches table in ClickHouse."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-critical.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({namespace="security"} |= `"sigma_match": true` | json | rule_level=~"critical|high" [10m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: soc-yara-high-severity
+        title: YARA High-Severity Match Detected
+        condition: A
+        labels:
+          severity: critical
+          team: soc
+          source: yara
+        annotations:
+          summary: "YARA high-severity malware detection on {{ $labels.pod }}"
+          description: "A high-severity YARA rule matched on a file. Investigate the yara-scanner pod logs in the security namespace immediately."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-yara-high-severity.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({namespace="security", app="yara-scanner"} |= "yara_match" |= "WebShell" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: soc-yara-suspicious-file
+        title: YARA Rule Match Detected
+        condition: A
+        labels:
+          severity: warning
+          team: soc
+          source: yara
+        annotations:
+          summary: "YARA rule match detected on {{ $labels.pod }}"
+          description: "A YARA rule matched on a file in the cluster. Review the security/yara-scanner pod logs to investigate."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-yara-suspicious-file.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({namespace="security", app="yara-scanner"} |= "yara_match" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 2m

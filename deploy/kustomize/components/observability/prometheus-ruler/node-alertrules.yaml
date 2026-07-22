@@ -1,0 +1,74 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node-alerts
+  namespace: observability
+  labels:
+    prometheus: ruler
+spec:
+  groups:
+    - name: node-alerts
+      interval: 30s
+      rules:
+        - alert: NodeHighCPULoad
+          expr: (1 - avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.9
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node {{ $labels.instance }} CPU load is critically high"
+            description: "Node {{ $labels.instance }} has CPU usage above 90% for the last 15 minutes. Current value: {{ $value | humanizePercentage }}"
+
+        - alert: NodeHighMemoryUsage
+          expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node {{ $labels.instance }} memory usage is critically high"
+            description: "Node {{ $labels.instance }} has memory usage above 90% for the last 5 minutes. Current value: {{ $value | humanizePercentage }}"
+
+        - alert: NodeDiskAlmostFull
+          expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node {{ $labels.instance }} root filesystem is almost full"
+            description: "Node {{ $labels.instance }} has less than 10% free space on the root filesystem for the last 5 minutes. Available: {{ $value | humanizePercentage }}"
+
+        - alert: NodeFilesystemReadOnly
+          expr: node_filesystem_readonly == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node {{ $labels.instance }} filesystem is read-only"
+            description: "Node {{ $labels.instance }} filesystem {{ $labels.device }} is read-only. This may indicate filesystem corruption."
+
+        - alert: NodeNetworkReceiveErrors
+          expr: rate(node_network_receive_errs_total[2m]) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} network receive errors"
+            description: "Node {{ $labels.instance }} interface {{ $labels.device }} has {{ $value | humanize }} receive errors per second over the last 2 minutes."
+
+        - alert: NodeNTPClockSkew
+          expr: abs(node_timex_offset_seconds) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} NTP clock skew is high"
+            description: "Node {{ $labels.instance }} has NTP clock skew of {{ $value | humanize }} seconds (threshold: 0.05s)."
+
+        - alert: NodeSystemdServiceFailed
+          expr: node_systemd_unit_state{state="failed"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} systemd service failed"
+            description: "Node {{ $labels.instance }} systemd service {{ $labels.name }} is in failed state."

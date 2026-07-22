@@ -1,0 +1,51 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: Observability - Blackbox
+    folder: SRE Alerts
+    interval: 1m
+    rules:
+      - uid: blackbox-probe-high-latency
+        title: Blackbox Probe High Latency
+        condition: A
+        labels:
+          severity: warning
+          source: sre
+        annotations:
+          summary: "Probe latency high: {{ $labels.instance }}"
+          description: "Probe duration exceeds 2 seconds. Network or target performance may be degraded."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: probe_duration_seconds{job="blackbox/http"} > 2
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+
+      - uid: blackbox-probe-down
+        title: Blackbox Probe Down
+        condition: A
+        labels:
+          severity: critical
+          source: sre
+        annotations:
+          summary: "Probe down: {{ $labels.instance }}"
+          description: "Blackbox probe has been failing for 2 minutes. Target may be unreachable."
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-blackbox-probe-down.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: probe_success{job=~"blackbox/.+"} == 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 2m

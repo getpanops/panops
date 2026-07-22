@@ -1,0 +1,157 @@
+// YARA Rules for Malware Detection
+// Includes EICAR test, reverse shells, crypto miners, and webshells
+
+rule EICAR_Test_File {
+    meta:
+        description = "EICAR test file pattern (standard antivirus test)"
+        author = "homelab-security"
+        date = "2026-06-30"
+    strings:
+        $eicar = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+    condition:
+        $eicar
+}
+
+rule Reverse_Shell_Indicators {
+    meta:
+        description = "Detects common reverse shell patterns"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1059"
+    strings:
+        $bash_tcp1 = "/bin/bash -i >& /dev/tcp/"
+        $bash_tcp2 = "bash -i >& /dev/tcp/"
+        $nc_exec = "nc -e /bin/bash"
+        $nc_exec2 = "nc.traditional -e /bin/bash"
+        $bash_exec = "bash -c"
+        $sh_exec = "/bin/sh -c"
+    condition:
+        any of them
+}
+
+rule Base64_Encoded_Reverse_Shell {
+    meta:
+        description = "Detects base64-encoded reverse shell payloads"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1059"
+    strings:
+        $b64_bash = /L2Jpbi9iYXNo/ // base64 for "/bin/bash"
+        $b64_nc = /bmMgLWU/ // base64 for "nc -e"
+        $b64_dev_tcp = /ZGV2L3RjcA/ // base64 for "dev/tcp"
+    condition:
+        any of them
+}
+
+rule Crypto_Miner_Indicators {
+    meta:
+        description = "Detects cryptocurrency miner patterns and C2 connections"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1078"
+    strings:
+        $stratum = "stratum+tcp://"
+        $xmrig = "xmrig"
+        $minerd = "minerd"
+        $cpuminer = "cpuminer"
+        $monero_pool = ".moneropool."
+        $nicehash = "nicehash"
+    condition:
+        any of them
+}
+
+rule Webshell_Patterns {
+    meta:
+        description = "Detects common PHP/web shell patterns"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1505"
+    strings:
+        $php_eval = "eval(base64_decode"
+        $system_get = "system($_GET"
+        $system_post = "system($_POST"
+        $passthru = "passthru("
+        $exec_get = "exec($_GET"
+        $shell_exec = "shell_exec("
+        $backtick = "`$_GET["
+    condition:
+        any of them
+}
+
+rule PHP_Web_Access_Backdoor {
+    meta:
+        description = "Detects PHP-based web backdoors"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1505"
+    strings:
+        $php_tag = "<?php"
+        $cmd_exec = "cmd" nocase
+        $backdoor_var = "$_REQUEST"
+    condition:
+        all of them
+}
+
+rule Privilege_Escalation_Attempts {
+    meta:
+        description = "Detects privilege escalation indicators"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1548"
+    strings:
+        $setuid = "chmod u+s"
+        $sudo_bypass = "sudo -l"
+        $nsenter = "nsenter"
+        $unshare = "unshare -"
+        $setcap = "setcap"
+    condition:
+        any of them
+}
+
+rule Credential_Theft_Patterns {
+    meta:
+        description = "Detects patterns related to credential theft"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1003"
+    strings:
+        $shadow_read = "cat /etc/shadow"
+        $passwd_read = "cat /etc/passwd"
+        $proc_mem = "/proc/*/mem"
+        $docker_sock = "/var/run/docker.sock"
+        $kubeconfig = "$HOME/.kube/config"
+        $ssh_keys = "/.ssh/id_"
+    condition:
+        any of them
+}
+
+rule Suspicious_Process_Injection {
+    meta:
+        description = "Detects process injection and memory manipulation attempts"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1055"
+    strings:
+        $ptrace = "ptrace("
+        $process_vm_writev = "process_vm_writev"
+        $dlopen = "dlopen("
+        $memcpy = "memcpy("
+    condition:
+        any of them
+}
+
+rule Persistence_Mechanisms {
+    meta:
+        description = "Detects common persistence mechanisms"
+        author = "homelab-security"
+        date = "2026-06-30"
+        technique = "T1547"
+    strings:
+        $bashrc = ".bashrc"
+        $crontab_edit = "crontab -e"
+        $systemd_service = "/etc/systemd/system/"
+        $init_d = "/etc/init.d/"
+        $ld_preload = "LD_PRELOAD"
+    condition:
+        any of them
+}

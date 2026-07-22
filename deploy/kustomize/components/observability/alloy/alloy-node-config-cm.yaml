@@ -1,0 +1,308 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-node-config
+  namespace: observability
+data:
+  config.alloy: |
+    // Loki endpoint for log shipping
+    loki.write "default" {
+      endpoint {
+        url = "http://gigapipe.observability.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
+
+    // Prometheus endpoint for metrics
+    prometheus.remote_write "default" {
+      endpoint {
+        url = "http://gigapipe.observability.svc.cluster.local:3100/api/prom/push"
+      }
+    }
+
+    // Discover pods on this node for log collection
+    discovery.kubernetes "pods" {
+      role = "pod"
+      selectors {
+        role  = "pod"
+        field = "spec.nodeName=" + env("HOSTNAME")
+      }
+    }
+
+    // Exclude Falco and Tetragon from generic collection — each has a dedicated pipeline.
+    // Tetragon has an export-stdout sidecar that mirrors the log file; without exclusion
+    // every event lands twice (once via file reader, once via pod log scraper).
+    discovery.relabel "pods_filtered" {
+      targets = discovery.kubernetes.pods.targets
+      rule {
+        source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        regex         = "security;falco"
+        action        = "drop"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        regex         = "kube-system;tetragon"
+        action        = "drop"
+      }
+    }
+
+    // Collect pod logs (Falco excluded); forward through namespace-extraction stage
+    loki.source.kubernetes "pods" {
+      targets    = discovery.relabel.pods_filtered.output
+      forward_to = [loki.process.pod_namespace.receiver]
+    }
+
+    // Extract namespace from the instance label (format: <namespace>/<pod>:<container>)
+    // loki.source.kubernetes only sets instance/job/service_name; namespace must be derived.
+    // stage.regex source= doesn't fall back to stream labels in Alloy v1.x; use stage.template
+    // which has direct access to .Labels map.
+    loki.process "pod_namespace" {
+      stage.template {
+        source   = "namespace"
+        template = `{{ (split "/" .Labels.instance)._0 }}`
+      }
+      stage.labels {
+        values = {
+          namespace = "",
+        }
+      }
+
+      // Drop debug/trace logs before ingestion to reduce volume.
+      // JSON-structured logs ({"level":"debug"} or {"level":"trace"})
+      stage.drop {
+        expression           = `(?i)"level"\s*:\s*"(debug|trace)"`
+        drop_counter_reason  = "log_level_drop"
+      }
+      // Logfmt/plaintext logs (DEBUG ..., TRACE ..., [DEBUG], [TRACE])
+      stage.drop {
+        expression           = `(?i)^(DEBUG|TRACE)[\s\[\|:]`
+        drop_counter_reason  = "log_level_drop"
+      }
+
+      // === P3-3: Pod log classification by namespace ===
+      stage.static_labels {
+        values = {
+          event_class = "application",
+          tier        = "low",
+        }
+      }
+      stage.match {
+        selector = `{namespace=~"CHANGE_ME_AUTH_NAMESPACES"}`
+        stage.static_labels { values = { event_class = "auth" } }
+      }
+      stage.match {
+        selector = `{namespace=~"kube-system|flux-system|cert-manager|dns-system|cilium-spire|spire"}`
+        stage.static_labels { values = { event_class = "infrastructure" } }
+      }
+      stage.match {
+        selector = `{namespace="security"}`
+        stage.static_labels { values = { event_class = "runtime-security", tier = "high" } }
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
+
+    // Falco security events — dedicated pipeline with JSON parsing and label promotion
+    discovery.kubernetes "falco_pods" {
+      role = "pod"
+      selectors {
+        role  = "pod"
+        field = "spec.nodeName=" + env("HOSTNAME")
+        label = "app.kubernetes.io/name=falco"
+      }
+      namespaces {
+        names = ["security"]
+      }
+    }
+
+    loki.source.kubernetes "falco_logs" {
+      targets    = discovery.kubernetes.falco_pods.targets
+      forward_to = [loki.process.falco.receiver]
+    }
+
+    loki.process "falco" {
+      // Parse Falco JSON output line; also extract tags array for MITRE mapping
+      stage.json {
+        expressions = {
+          rule     = "rule",
+          priority = "priority",
+          output   = "output",
+          hostname = "hostname",
+          tags     = "tags",
+        }
+      }
+
+      // Promote rule name and priority to stream labels for efficient querying
+      stage.labels {
+        values = {
+          falco_rule     = "rule",
+          falco_priority = "priority",
+        }
+      }
+
+      // Extract first MITRE ATT&CK technique ID from the tags field (e.g. T1059.004)
+      stage.regex {
+        expression = "(?P<mitre_technique>T\\d{4}(?:\\.\\d{3})?)"
+        source     = "tags"
+      }
+
+      // Promote mitre_technique to a stream label (empty string if no technique in tags)
+      stage.labels {
+        values = {
+          mitre_technique = "",
+        }
+      }
+
+      // Tag all Falco events with consistent job and source labels
+      stage.static_labels {
+        values = {
+          job    = "falco",
+          source = "security/falco",
+        }
+      }
+
+      // === P3-1: Falco event classification ===
+      stage.static_labels {
+        values = { event_class = "runtime-security" }
+      }
+
+      // tier from falco_priority stream label
+      stage.match {
+        selector = `{falco_priority=~"Critical|Emergency"}`
+        stage.static_labels { values = { tier = "critical" } }
+      }
+      stage.match {
+        selector = `{falco_priority="Error"}`
+        stage.static_labels { values = { tier = "high" } }
+      }
+      stage.match {
+        selector = `{falco_priority="Warning"}`
+        stage.static_labels { values = { tier = "medium" } }
+      }
+      stage.match {
+        selector = `{falco_priority=~"Notice|Informational|Debug"}`
+        stage.static_labels { values = { tier = "low" } }
+      }
+
+      // remediation_hint from falco_rule stream label
+      stage.match {
+        selector = `{falco_rule=~".*[Ss]hell.*|.*[Tt]erminal.*|.*[Ee]xec.*container.*|.*[Bb]inary.*|.*[Dd]rop and execute.*|.*[Ee]scape.*|.*[Cc]hroot.*"}`
+        stage.static_labels { values = { remediation_hint = "isolate-pod" } }
+      }
+      stage.match {
+        selector = `{falco_rule=~".*[Cc]redential.*|.*shadow.*|.*passwd.*|.*[Ss]ecret.*"}`
+        stage.static_labels { values = { remediation_hint = "rotate-credentials" } }
+      }
+      stage.match {
+        selector = `{falco_rule=~".*[Nn]etwork.*|.*[Ss]can.*|.*nmap.*|.*[Pp]ort.*"}`
+        stage.static_labels { values = { remediation_hint = "check-network" } }
+      }
+
+      // runbook_ref for high-signal rules (Phase 4 will create these files)
+      stage.match {
+        selector = `{falco_rule="Drop and execute new binary in container"}`
+        stage.static_labels { values = { runbook_ref = "soc-falco-binary-drop" } }
+      }
+      stage.match {
+        selector = `{falco_rule="Terminal shell in container"}`
+        stage.static_labels { values = { runbook_ref = "soc-falco-shell" } }
+      }
+      stage.match {
+        selector = `{falco_rule=~".*[Ee]scape.*|.*[Cc]hroot.*"}`
+        stage.static_labels { values = { runbook_ref = "soc-falco-escape" } }
+      }
+      stage.match {
+        selector = `{falco_rule=~".*[Cc]redential.*|.*shadow.*|.*passwd.*"}`
+        stage.static_labels { values = { runbook_ref = "soc-falco-credential" } }
+      }
+
+      // Use the human-readable output field as the log line
+      stage.output {
+        source = "output"
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
+
+    // Tetragon security events — drop high-volume process_exit and process_exec events;
+    // only forward policy-matched kprobe events and process_exec from non-system namespaces.
+    loki.source.file "tetragon" {
+      targets = [{
+        __path__ = "/var/run/cilium/tetragon/tetragon.log",
+        job      = "tetragon",
+      }]
+      forward_to = [loki.process.tetragon_filter.receiver]
+    }
+
+    loki.process "tetragon_filter" {
+      // Drop process_exit events entirely — redundant with exec for our use cases.
+      stage.drop {
+        expression  = "\"process_exit\""
+        drop_counter_reason = "tetragon_exit"
+      }
+      // Drop process_exec in system namespaces — too noisy, low security value.
+      stage.drop {
+        expression  = "\"process_exec\".*\"k8s_namespace\":\"(kube-system|kube-public|flux-system|cert-manager|cilium-spire|spire)\""
+        drop_counter_reason = "tetragon_exec_system_ns"
+      }
+      forward_to = [loki.write.default.receiver]
+    }
+
+    // Scrape kubelet metrics
+    discovery.kubernetes "nodes" {
+      role = "node"
+    }
+
+    prometheus.scrape "kubelet" {
+      targets = discovery.kubernetes.nodes.targets
+      scheme  = "https"
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      tls_config {
+        insecure_skip_verify = true
+      }
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+
+    // kube-apiserver audit logs (control plane nodes only; no-ops silently on workers)
+    local.file_match "audit_logs" {
+      path_targets = [{
+        __path__ = "/var/log/audit/kube/kube-apiserver.log",
+        job       = "kubernetes/audit",
+        node_name = env("HOSTNAME"),
+        cluster   = "k8s",
+      }]
+    }
+
+    loki.source.file "audit_logs" {
+      targets    = local.file_match.audit_logs.targets
+      forward_to = [loki.process.audit_filter.receiver]
+    }
+
+    // Drop read-only audit events (get/list/watch) — these dominate volume with no security value.
+    // Only forward write operations and auth events.
+    loki.process "audit_filter" {
+      stage.drop {
+        expression  = "\"verb\":\"(get|list|watch)\""
+        drop_counter_reason = "audit_readonly"
+      }
+      // Drop ResponseStarted stage — only keep RequestReceived and ResponseComplete.
+      stage.drop {
+        expression  = "\"stage\":\"ResponseStarted\""
+        drop_counter_reason = "audit_response_started"
+      }
+
+      // === P3-2: Audit log classification ===
+      stage.static_labels {
+        values = {
+          event_class      = "k8s-audit",
+          tier             = "medium",
+          remediation_hint = "review-audit",
+        }
+      }
+      // Escalate write operations on sensitive resources
+      stage.match {
+        selector = `{job="kubernetes/audit"} |~ "\"resource\":\"(secrets|clusterrolebindings|rolebindings|clusterroles|roles)\""`
+        stage.static_labels { values = { tier = "high" } }
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }

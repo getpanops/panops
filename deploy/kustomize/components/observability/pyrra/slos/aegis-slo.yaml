@@ -1,0 +1,28 @@
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: aegis-availability
+  namespace: aegis
+  labels:
+    team: platform
+    tier: critical
+spec:
+  target: "99.9"
+  window: 4w
+  description: "99.9% of aegis JWT signing requests succeed"
+  indicator:
+    ratio:
+      errors:
+        metric: http_requests_total{namespace="aegis",code=~"5.."}
+      total:
+        metric: http_requests_total{namespace="aegis"}
+  alerting:
+    name: AegisHighErrorRate
+    labels:
+      severity: critical
+    page:
+      labels:
+        severity: critical
+    ticket:
+      labels:
+        severity: warning

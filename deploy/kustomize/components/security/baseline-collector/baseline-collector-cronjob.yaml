@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: baseline-collector
+  namespace: security
+spec:
+  # Run at :05 past each hour — gives sigma-scanner time to flush any matches
+  schedule: "5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: baseline-collector
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: collector
+              image: ghcr.io/getpanops/panops/sigma-scanner:latest
+              command: [python3, /scripts/baseline-collector.py]
+              env:
+                - name: LOKI_URL
+                  value: "http://gigapipe.observability.svc.cluster.local:3100"
+                - name: CH_URL
+                  value: "http://observability-clickhouse-clickhouse-headless.observability.svc.cluster.local:8123/"
+                - name: CH_USER
+                  value: "default"
+                - name: CH_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: clickhouse-password
+                      key: password
+                - name: DEVIATION_THRESHOLD
+                  value: "3.0"
+                - name: MIN_BASELINE_POINTS
+                  value: "5"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+          volumes:
+            - name: script
+              configMap:
+                name: baseline-collector-script
+                defaultMode: 0755

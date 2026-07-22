@@ -1,0 +1,226 @@
+---
+# PanOps Core — detection suite without ML or LLM
+# Suitable for a single Docker host (no Kubernetes required).
+#
+# Compose tiers (cumulative — each builds on the one below):
+#   Core (this file):  detection, correlation, remediation, intel bundles
+#   ML tier:           docker compose -f docker-compose.yml -f docker-compose.ml.yml up -d
+#   LLM tier:          docker compose -f docker-compose.yml -f docker-compose.ml.yml -f docker-compose.llm.yml up -d
+#
+# Limitations vs Kubernetes deployment:
+#   - No Falco (requires kernel-level access; run on the host separately)
+#   - No Talon automated response (Falco dependency)
+#   - No Coroot (Kubernetes eBPF dependency)
+#   - Single-node ClickHouse (no KeeperCluster HA)
+#
+# Usage:
+#   cp .env.example .env && nano .env
+#   docker compose up -d
+#   docker compose logs -f panops-assembler
+
+name: panops
+
+x-ch-env: &ch-env
+  CH_HOST: clickhouse:8123
+  CH_USER: default
+  CH_PASSWORD: ${CLICKHOUSE_PASSWORD}
+  CH_URL: http://clickhouse:8123/
+
+services:
+
+  # ── ClickHouse (single-node) ────────────────────────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./config/clickhouse-users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+    ports:
+      - "8123:8123"   # HTTP interface (internal use)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Schema initialisation ───────────────────────────────────────────────────
+  panops-schema:
+    image: python:3.13-slim
+    restart: "no"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      gigapipe:
+        condition: service_healthy
+    environment:
+      <<: *ch-env
+    volumes:
+      - ../../clickhouse/schema:/scripts:ro
+    command: python /scripts/create-schema.py
+
+  # ── Gigapipe (Loki + Prometheus-compatible gateway → ClickHouse) ─────────────
+  gigapipe:
+    image: ghcr.io/metrico/gigapipe:latest
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_SERVER: clickhouse
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_DB: cloki
+      CLICKHOUSE_AUTH: default:${CLICKHOUSE_PASSWORD}
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── OpenTelemetry Collector (log + metric collection) ───────────────────────
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.127.0
+    restart: unless-stopped
+    depends_on:
+      gigapipe:
+        condition: service_healthy
+    command: [--config, /etc/otelcol/config.yaml]
+    volumes:
+      - ./config/otelcol-config.yaml:/etc/otelcol/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    ports:
+      - "4317:4317"    # OTLP gRPC (apps can push traces/metrics directly)
+      - "4318:4318"    # OTLP HTTP
+      - "8888:8888"    # otelcol self-metrics
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.6.0
+    restart: unless-stopped
+    depends_on:
+      gigapipe:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-localhost}
+      GF_SMTP_ENABLED: ${GRAFANA_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ../../grafana/alerting:/etc/grafana/provisioning/alerting:ro
+    ports:
+      - "3000:3000"
+
+  # ── Pyrra SLO UI ────────────────────────────────────────────────────────────
+  # Queries Gigapipe's PromQL endpoint to compute burn rates on-the-fly.
+  # SLO definitions live in rules/pyrra/ — no separate rule-generation step needed.
+  pyrra:
+    image: ghcr.io/pyrra-dev/pyrra:v0.8.0
+    restart: unless-stopped
+    depends_on:
+      gigapipe:
+        condition: service_healthy
+    command:
+      - api
+      - --prometheus-url=http://gigapipe:3100
+      - --api-url=http://pyrra:9444
+    ports:
+      - "9099:9099"   # UI
+
+  # ── PanOps Assembler ──────────────────────────────────────────────────────────
+  panops-assembler:
+    # Override: ASSEMBLER_IMAGE=your-registry/panops/assembler:latest
+    image: ${ASSEMBLER_IMAGE:-ghcr.io/getpanops/panops/assembler:latest}
+    restart: unless-stopped
+    depends_on:
+      panops-schema:
+        condition: service_completed_successfully
+    environment:
+      <<: *ch-env
+      LOKI_URL: http://gigapipe:3100
+      PROM_URL: http://gigapipe:3100
+      OTLP_ENDPOINT: http://otelcol:4318
+      XOPS_ML_ENABLED: "false"
+      XOPS_LLM_ENABLED: "false"
+      LISTEN_PORT: "8080"
+      POLL_INTERVAL_S: "60"
+      AUTO_REMEDIATION_MODE: ${AUTO_REMEDIATION_MODE:-dry-run}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── Sigma Scanner (runs every 5 minutes) ────────────────────────────────────
+  sigma-scanner:
+    image: ${SIGMA_SCANNER_IMAGE:-ghcr.io/getpanops/panops/sigma-scanner:latest}
+    restart: unless-stopped
+    depends_on:
+      panops-schema:
+        condition: service_completed_successfully
+    environment:
+      <<: *ch-env
+      LOKI_URL: http://gigapipe:3100
+      RULES_DIR: /rules
+    volumes:
+      - ../../rules/sigma/rules:/rules:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          python /scripts/sigma-scanner.py
+          sleep 300
+        done
+
+  # ── Drain3 Log Miner (runs every 10 minutes) ────────────────────────────────
+  drain3-miner:
+    image: ${DRAIN3_MINER_IMAGE:-ghcr.io/getpanops/panops/drain3-miner:latest}
+    restart: unless-stopped
+    depends_on:
+      panops-schema:
+        condition: service_completed_successfully
+    environment:
+      <<: *ch-env
+      LOKI_URL: http://gigapipe:3100
+      LINES_PER_NS: "2000"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          python /app/drain3_miner.py
+          sleep 600
+        done
+
+  # ── Intel / rule pack updater (one-shot setup, not started by default) ─────────
+  # Run once to download full Sigma + YARA rulesets from public sources:
+  #   docker compose --profile setup run --rm nous-update
+  # Image built from github.com/getpanops/nous
+  nous-update:
+    image: ${NOUS_UPDATER_IMAGE:-ghcr.io/getpanops/nous/updater:latest}
+    profiles: ["setup"]
+    volumes:
+      - ../../rules:/rules
+    command: ["online", "--rules-dir", "/rules/sigma", "--packs", "sigmahq_core,yara_forge_full"]
+
+volumes:
+  clickhouse-data:
+  grafana-data:

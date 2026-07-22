@@ -1,0 +1,30 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: panops-llm-sa
+  namespace: panops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: panops-job-spawner
+  namespace: panops
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: panops-assembler-job-spawner
+  namespace: panops
+subjects:
+  - kind: ServiceAccount
+    name: panops-assembler
+    namespace: panops
+roleRef:
+  kind: Role
+  name: panops-job-spawner
+  apiGroup: rbac.authorization.k8s.io

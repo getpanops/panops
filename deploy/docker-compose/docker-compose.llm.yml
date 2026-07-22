@@ -1,0 +1,88 @@
+---
+# PanOps LLM Tier — LLM-assisted diagnosis, agent, local inference
+#
+# Extends the ML stack with LLM capabilities. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.ml.yml -f docker-compose.llm.yml up -d
+#
+# Two LLM options (mutually exclusive — set one):
+#
+#   Option A — BYO external LLM (OpenAI-compatible API, no local GPU needed):
+#     Set LLM_EXTERNAL_URL and LLM_EXTERNAL_TOKEN in .env
+#     Leave LLAMA_SERVER_URL unset (defaults to the llama-server service)
+#
+#   Option B — Local llama.cpp server (included, GPU/CPU):
+#     Run the setup profile once to download the model:
+#       docker compose -f docker-compose.yml -f docker-compose.ml.yml -f docker-compose.llm.yml \
+#         --profile local-llm-setup up model-download
+#     Then start with --profile local-llm to bring up llama-server.
+#
+# panops-agent is optional — it provides a conversational interface to PanOps via MCP.
+
+services:
+
+  panops-assembler:
+    environment:
+      XOPS_LLM_ENABLED: "true"
+      LLAMA_SERVER_URL: http://llama-server:8080
+      LLM_EXTERNAL_URL: ${LLM_EXTERNAL_URL:-}
+      LLM_EXTERNAL_TOKEN: ${LLM_EXTERNAL_TOKEN:-}
+
+  # ── PanOps Agent (MCP-based conversational interface) ──────────────────────────
+  panops-agent:
+    image: ${AGENT_IMAGE:-ghcr.io/getpanops/panops/agent:latest}
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      LLAMA_URL: ${LLM_EXTERNAL_URL:-http://llama-server:8080}
+      LLM_EXTERNAL_TOKEN: ${LLM_EXTERNAL_TOKEN:-}
+      CH_URL: http://clickhouse:8123
+      CH_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      MCP_MEMORY_URL: ${MCP_MEMORY_URL:-http://memory-mcp:8082}
+      PORT: "8081"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Local LLM Inference Server (llama.cpp) ───────────────────────────────────
+  # Only started when --profile local-llm is passed.
+  # Skip this if you're using LLM_EXTERNAL_URL instead.
+  llama-server:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    restart: unless-stopped
+    profiles:
+      - local-llm
+    volumes:
+      - ./models:/models:ro
+    command: >
+      --model /models/Qwen2.5-3B-Instruct-Q4_K_M.gguf
+      --port 8080
+      --host 0.0.0.0
+      --ctx-size 4096
+      --threads 4
+    ports:
+      - "8083:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/models"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+
+  # ── Model Downloader (one-time setup) ────────────────────────────────────────
+  # For airgap installs: place model .gguf in ./models/ before running.
+  model-download:
+    image: curlimages/curl:latest
+    profiles:
+      - local-llm-setup
+    volumes:
+      - ./models:/models
+    command: >
+      -L -o /models/Qwen2.5-3B-Instruct-Q4_K_M.gguf
+      https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf

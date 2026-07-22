@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyrra-api
+  namespace: observability
+  labels:
+    app: pyrra-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pyrra-api
+  template:
+    metadata:
+      labels:
+        app: pyrra-api
+    spec:
+      serviceAccountName: pyrra
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+      - name: pyrra
+        image: ghcr.io/pyrra-dev/pyrra:v0.10.1
+        args:
+        - api
+        - --prometheus-url=http://gigapipe.observability.svc.cluster.local:3100
+        - --api-url=http://pyrra-operator:9444
+        ports:
+        - name: http
+          containerPort: 9099
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9099
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9099
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyrra-api
+  namespace: observability
+  labels:
+    app: pyrra-api
+spec:
+  selector:
+    app: pyrra-api
+  ports:
+  - name: http
+    port: 9099
+    targetPort: 9099
+    protocol: TCP

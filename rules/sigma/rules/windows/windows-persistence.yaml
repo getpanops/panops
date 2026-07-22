@@ -1,0 +1,35 @@
+title: Suspicious Scheduled Task Creation
+name: windows_scheduled_task_creation
+status: stable
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4698
+  filter_system:
+    SubjectUserName|endswith: '$'
+  condition: selection and not filter_system
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1053.005
+---
+title: New Service Installation
+name: windows_new_service
+status: stable
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    EventID: 7045
+  filter_known:
+    ServiceName|contains:
+      - 'panops-otelcol'
+      - 'WinDefend'
+  condition: selection and not filter_known
+level: low
+tags:
+  - attack.persistence
+  - attack.t1543.003

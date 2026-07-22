@@ -1,0 +1,35 @@
+title: PsExec Remote Execution
+name: windows_psexec
+status: stable
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    EventID: 7045
+    ServiceName|contains: 'PSEXESVC'
+  condition: selection
+level: high
+tags:
+  - attack.lateral_movement
+  - attack.t1570
+---
+title: WMI Remote Process Creation
+name: windows_wmi_remote
+status: stable
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    ParentProcessName|endswith: '\WmiPrvSE.exe'
+    Image|endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+  condition: selection
+level: medium
+tags:
+  - attack.lateral_movement
+  - attack.t1021.006

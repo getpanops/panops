@@ -1,0 +1,49 @@
+name: windows-clickhouse
+priority: 30
+transformations:
+  - id: windows_eventlog_mapping
+    type: field_name_mapping
+    mapping:
+      EventID: fields.EventID
+      SubjectUserName: fields.SubjectUserName
+      SubjectDomainName: fields.SubjectDomainName
+      TargetUserName: fields.TargetUserName
+      TargetDomainName: fields.TargetDomainName
+      CallerProcessName: fields.CallerProcessName
+      IpAddress: fields.IpAddress
+      WorkstationName: fields.WorkstationName
+      LogonType: fields.LogonType
+      ProcessName: fields.ProcessName
+      CommandLine: fields.CommandLine
+      ParentProcessName: fields.ParentProcessName
+      Image: fields.Image
+      TaskName: fields.TaskName
+      ServiceName: fields.ServiceName
+
+  - id: logsource_windows_security
+    type: logsource_condition
+    product: windows
+    service: security
+    conditions:
+      attributes.log.source: windows-security
+
+  - id: logsource_windows_system
+    type: logsource_condition
+    product: windows
+    service: system
+    conditions:
+      attributes.log.source: windows-system
+
+  - id: logsource_sysmon
+    type: logsource_condition
+    product: windows
+    category: process_creation
+    conditions:
+      attributes.log.source: sysmon
+
+  - id: logsource_hyperv
+    type: logsource_condition
+    product: windows
+    service: microsoft-windows-hyper-v-worker-admin
+    conditions:
+      attributes.log.source: hyperv

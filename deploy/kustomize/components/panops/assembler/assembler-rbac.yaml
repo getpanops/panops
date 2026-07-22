@@ -1,0 +1,38 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: panops-assembler
+rules:
+# Read pods, deployments, replicasets, statefulsets to inspect state
+- apiGroups: ["", "apps"]
+  resources: ["pods", "deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+# Read events — required for _has_probe_failure_event() probe routing
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+# Delete pods — required for _rule_cnpg_failover and _rule_redis_sentinel_heal
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+# Patch deployments for probe/resource adjustments and rollout restarts
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["patch", "update"]
+# Read happenings table is ClickHouse-side; need to exec rollout
+- apiGroups: ["apps"]
+  resources: ["deployments/rollout"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: panops-assembler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: panops-assembler
+subjects:
+- kind: ServiceAccount
+  name: panops-assembler
+  namespace: panops

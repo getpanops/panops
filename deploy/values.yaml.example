@@ -1,0 +1,72 @@
+# xOps Platform — Configuration Values
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. cp deploy/values.yaml.example deploy/values.yaml
+# 2. Edit deploy/values.yaml (this file — all options below)
+# 3. python3 deploy/configure.py
+# 4. kubectl apply -k deploy/kustomize/overlays/default/
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Base domain — services are exposed as {name}.{domain} via HTTPRoute
+domain: example.com
+
+# Default PVC storage class (for model storage, etc.)
+storageClass: local-path
+
+# ─── ClickHouse ───────────────────────────────────────────────────────────────
+clickhouse:
+  password: CHANGE_ME       # shared password for the default user
+
+  s3:                       # object storage for ClickHouse backups + Gigapipe log retention
+    endpoint: https://s3.example.com
+    bucket: clickhouse-backup
+    accessKey: CHANGE_ME
+    secretKey: CHANGE_ME
+
+# ─── Grafana ─────────────────────────────────────────────────────────────────
+grafana:
+  adminPassword: CHANGE_ME
+
+  smtp:                     # optional — for email alert delivery
+    enabled: false
+    host: smtp.example.com:587
+    user: alerts@example.com
+    password: CHANGE_ME
+    fromAddress: alerts@example.com
+    fromName: xOps Alerts
+
+  oidc:                     # optional — for SSO (Keycloak, Authelia, etc.)
+    enabled: false
+    clientId: CHANGE_ME
+    clientSecret: CHANGE_ME
+    authUrl: https://auth.example.com/application/o/authorize/
+    tokenUrl: https://auth.example.com/application/o/token/
+    apiUrl: https://auth.example.com/application/o/userinfo/
+
+# ─── Matrix (optional) ────────────────────────────────────────────────────────
+matrix:
+  enabled: false            # set true to enable Matrix alert routing
+  homeserver: https://matrix.example.com
+  botToken: CHANGE_ME
+  rooms:
+    noc: "!ROOM_ID:matrix.example.com"
+    sre: "!ROOM_ID:matrix.example.com"
+    soc: "!ROOM_ID:matrix.example.com"
+
+# ─── xOps Assembler ───────────────────────────────────────────────────────────
+xops:
+  # Remediation gate — start with dry-run, promote after chaos testing
+  remediationMode: dry-run  # off | dry-run | limited | full
+
+# ─── Images ───────────────────────────────────────────────────────────────────
+# Override if hosting images in your own registry
+images:
+  assembler: ghcr.io/getpanops/panops/assembler:latest
+  llmWorker: ghcr.io/getpanops/panops/llm-worker:latest
+  sigmaScanner: ghcr.io/getpanops/panops/sigma-scanner:latest
+
+# ─── Optional components ──────────────────────────────────────────────────────
+unifi:
+  enabled: false            # UniFi Poller for network device metrics
+  host: https://unifi.example.com
+  user: readonly
+  password: CHANGE_ME

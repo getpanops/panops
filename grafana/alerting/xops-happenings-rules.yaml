@@ -1,0 +1,98 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: PanOps - Open Happenings
+    folder: SRE Alerts
+    interval: 2m
+    rules:
+      - uid: panops-happening-sre
+        title: PanOps Open SRE Happenings
+        condition: A
+        labels:
+          severity: warning
+          team: sre
+        annotations:
+          summary: "PanOps: {{ $values.A.Value }} open SRE happening(s)"
+          description: "One or more SRE happenings are open. Query: SELECT id, opened_at, classifier_route FROM panops.happenings WHERE status='open' AND domain='SRE' ORDER BY opened_at DESC LIMIT 5"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: clickhouse
+            model:
+              rawSql: |
+                SELECT count() AS open_count
+                FROM panops.happenings
+                WHERE status = 'open' AND domain = 'SRE'
+              format: table
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: panops-happening-soc
+        title: PanOps Open SOC Happenings
+        condition: A
+        labels:
+          severity: critical
+          source: security
+        annotations:
+          summary: "PanOps: {{ $values.A.Value }} open SOC happening(s)"
+          description: "One or more SOC happenings are open. Query: SELECT id, opened_at, classifier_route, sigma_rule_ids, falco_rules FROM panops.happenings WHERE status='open' AND domain='SOC' ORDER BY opened_at DESC LIMIT 5"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: clickhouse
+            model:
+              rawSql: |
+                SELECT count() AS open_count
+                FROM panops.happenings
+                WHERE status = 'open' AND domain = 'SOC'
+              format: table
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: panops-happening-noc
+        title: PanOps Open NOC Happenings
+        condition: A
+        labels:
+          severity: warning
+          team: noc
+        annotations:
+          summary: "PanOps: {{ $values.A.Value }} open NOC happening(s)"
+          description: "One or more NOC happenings are open. Query: SELECT id, opened_at, classifier_route FROM panops.happenings WHERE status='open' AND domain='NOC' ORDER BY opened_at DESC LIMIT 5"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: clickhouse
+            model:
+              rawSql: |
+                SELECT count() AS open_count
+                FROM panops.happenings
+                WHERE status = 'open' AND domain = 'NOC'
+              format: table
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: panops-happening-escalate
+        title: PanOps Escalated Happening
+        condition: A
+        labels:
+          severity: critical
+          team: sre
+        annotations:
+          summary: "PanOps: {{ $values.A.Value }} ESCALATED happening(s)"
+          description: "One or more happenings classified ESCALATE (novel + security-correlated). Immediate investigation required. Query: SELECT id, opened_at, domain, affected_services FROM panops.happenings WHERE status='open' AND classifier_route='escalate' ORDER BY opened_at DESC LIMIT 5"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: clickhouse
+            model:
+              rawSql: |
+                SELECT count() AS open_count
+                FROM panops.happenings
+                WHERE status = 'open' AND classifier_route = 'escalate'
+              format: table
+        noDataState: OK
+        execErrState: OK
+        for: 0s

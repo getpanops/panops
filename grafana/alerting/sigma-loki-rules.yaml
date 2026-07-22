@@ -1,0 +1,206 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: Sigma - Linux Threat Detection
+    folder: SOC Alerts
+    interval: 1m
+    rules:
+      - uid: sigma-reverse-shell
+        title: Suspicious Reverse Shell
+        condition: A
+        labels:
+          severity: critical
+          mitre_technique: T1059.004
+          source: sigma
+        annotations:
+          summary: "Reverse shell attempt detected"
+          description: "Bash interactive reverse shell pattern detected in pod logs — potential command injection or malware"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-reverse-shell.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "bash -i" |= ">&" |= "/dev/tcp" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-shadow-read
+        title: Credential File Read Attempt
+        condition: A
+        labels:
+          severity: high
+          mitre_technique: T1003.008
+          source: sigma
+        annotations:
+          summary: "Shadow or passwd file access detected"
+          description: "Attempt to read /etc/shadow or /etc/passwd — potential credential theft"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-shadow-read.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "/etc/shadow" |= "cat" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-nmap-scan
+        title: Network Scanning Tool Detected
+        condition: A
+        labels:
+          severity: warning
+          mitre_technique: T1046
+          source: sigma
+        annotations:
+          summary: "Nmap or similar scanning tool executed"
+          description: "Network reconnaissance tool detected in pod — potential lateral movement or reconnaissance phase"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-nmap-scan.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "nmap " |= "-sV" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-suid-modification
+        title: SUID/SGID Bit Modification
+        condition: A
+        labels:
+          severity: high
+          mitre_technique: T1548.001
+          source: sigma
+        annotations:
+          summary: "SUID or SGID bit set on file"
+          description: "Executable SUID/SGID modification detected — potential privilege escalation vector"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-suid-modification.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "chmod +s" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-chroot-escape
+        title: Container Escape via Chroot
+        condition: A
+        labels:
+          severity: critical
+          mitre_technique: T1611
+          source: sigma
+        annotations:
+          summary: "Container escape attempt via chroot detected"
+          description: "Chroot with /proc/1/root pattern detected — potential container breakout"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-chroot-escape.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "chroot" |= "/proc/1/root" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-base64-payload
+        title: Base64-Encoded Payload Execution
+        condition: A
+        labels:
+          severity: high
+          mitre_technique: T1059
+          source: sigma
+        annotations:
+          summary: "Base64-encoded command execution detected"
+          description: "Suspicious base64 decode and bash execution — common obfuscation technique in malware"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-base64-payload.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "base64 -d" |= "bash" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-cron-modification
+        title: Cron Job Modification
+        condition: A
+        labels:
+          severity: warning
+          mitre_technique: T1053
+          source: sigma
+        annotations:
+          summary: "Crontab modification detected"
+          description: "Cron job added or modified — potential persistence mechanism"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-cron-modification.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "/etc/crontab" |= "echo" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+
+      - uid: sigma-k8s-pod-exec
+        title: Kubernetes Pod Exec Access
+        condition: A
+        labels:
+          severity: warning
+          mitre_technique: T1059
+          source: sigma
+        annotations:
+          summary: "kubectl exec or similar pod access detected"
+          description: "Interactive access to pod shell detected — verify authorization and purpose"
+          runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-k8s-pod-exec.md"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              expr: |
+                sum(count_over_time({job="kube-audit"} |= "pods/exec" [5m])) > 0
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: OK
+        for: 0s

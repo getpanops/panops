@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-retention-7d
+  namespace: observability
+  annotations:
+    description: "One-shot: ALTER TABLE to extend qryn retention from 2 to 7 days"
+spec:
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: migrate
+        image: python:3.12-slim
+        command:
+        - python
+        - -c
+        - |
+          import urllib.request, sys
+
+          CH = "http://observability-clickhouse-clickhouse-headless.observability.svc.cluster.local:8123"
+
+          ALTERS = [
+              "ALTER TABLE qryn.samples_v3    MODIFY TTL toDateTime(timestamp_ns / 1000000000) + INTERVAL 7 DAY",
+              "ALTER TABLE qryn.metrics_15s   MODIFY TTL toDateTime(timestamp_ns / 1000000000) + INTERVAL 7 DAY",
+              "ALTER TABLE qryn.patterns      MODIFY TTL toDateTime(timestamp_10m * 600)        + INTERVAL 7 DAY",
+              "ALTER TABLE qryn.time_series   MODIFY TTL date + INTERVAL 7 DAY",
+              "ALTER TABLE qryn.time_series_gin MODIFY TTL date + INTERVAL 7 DAY",
+          ]
+
+          errors = 0
+          for i, sql in enumerate(ALTERS, 1):
+              label = sql[:80]
+              try:
+                  req = urllib.request.Request(CH, data=sql.encode(), method="POST")
+                  req.add_header("Content-Type", "text/plain")
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      r.read()
+                  print(f"[{i}/{len(ALTERS)}] OK: {label}", flush=True)
+              except Exception as e:
+                  print(f"[{i}/{len(ALTERS)}] FAIL: {label}\n  {e}", file=sys.stderr, flush=True)
+                  errors += 1
+
+          if errors:
+              print(f"\n{errors} statement(s) failed", file=sys.stderr, flush=True)
+              sys.exit(1)
+          print(f"\nAll {len(ALTERS)} TTL modifications applied", flush=True)

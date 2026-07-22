@@ -1,0 +1,702 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alerting-rules
+  namespace: observability
+data:
+  sre-rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: SRE - Kubernetes
+        folder: SRE Alerts
+        interval: 1m
+        rules:
+          - uid: sre-pod-oomkill
+            title: Pod OOMKilled
+            condition: A
+            labels:
+              severity: warning
+              source: sre
+            annotations:
+              summary: "Pod {{ $labels.pod }} OOMKilled in {{ $labels.namespace }}"
+              description: "Container memory limit hit. Check limits or investigate leak."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-pod-oomkill.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: increase(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[5m]) > 0
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sre-pod-crashloop
+            title: Pod CrashLoopBackOff
+            condition: A
+            labels:
+              severity: warning
+              source: sre
+            annotations:
+              summary: "Pod {{ $labels.pod }} crash-looping in {{ $labels.namespace }}"
+              description: "Pod has restarted more than 5 times in the last hour."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-pod-crashloop.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 5m
+
+          - uid: sre-pvc-capacity
+            title: PVC Near Capacity
+            condition: A
+            labels:
+              severity: warning
+              source: sre
+            annotations:
+              summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+              description: "PVC approaching capacity — consider expanding or cleaning up."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-pvc-capacity.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: |
+                    kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 5m
+
+          - uid: sre-node-memory
+            title: Node Memory Pressure
+            condition: A
+            labels:
+              severity: warning
+              source: sre
+            annotations:
+              summary: "Node {{ $labels.node }} memory > 90%"
+              description: "High memory utilisation — risk of OOMKill on running pods."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-node-memory.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: |
+                    (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 5m
+
+          - uid: sre-kube-bench-regression
+            title: kube-bench CIS Failed Check Regression
+            condition: C
+            labels:
+              severity: warning
+              source: sre
+            annotations:
+              summary: "kube-bench: CIS failed check count increased"
+              description: "More CIS benchmark checks are failing compared to 24 hours ago. Review recent cluster changes."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-kube-bench-regression.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 90000, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({instance=~"validation/kube-bench.*"} |= "\"status\":\"FAIL\"" [25h]))
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+              - refId: B
+                relativeTimeRange: { from: 90000, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({instance=~"validation/kube-bench.*"} |= "\"status\":\"FAIL\"" [49h] offset 24h))
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+              - refId: C
+                datasourceUid: "__expr__"
+                model:
+                  refId: C
+                  type: math
+                  expression: "$A - $B"
+            noDataState: OK
+            execErrState: OK
+            for: 5m
+
+  blackbox-rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: Observability - Blackbox
+        folder: SRE Alerts
+        interval: 1m
+        rules:
+          - uid: blackbox-probe-high-latency
+            title: Blackbox Probe High Latency
+            condition: A
+            labels:
+              severity: warning
+              source: sre
+            annotations:
+              summary: "Probe latency high: {{ $labels.instance }}"
+              description: "Probe duration exceeds 2 seconds. Network or target performance may be degraded."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: probe_duration_seconds{job="blackbox/http"} > 2
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 2m
+
+          - uid: blackbox-probe-down
+            title: Blackbox Probe Down
+            condition: A
+            labels:
+              severity: critical
+              source: sre
+            annotations:
+              summary: "Probe down: {{ $labels.instance }}"
+              description: "Blackbox probe has been failing for 2 minutes. Target may be unreachable."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-blackbox-probe-down.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: probe_success{job=~"blackbox/.+"} == 0
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 2m
+
+  slo-rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: SLO - Canary Availability
+        folder: SRE Alerts
+        interval: 1m
+        rules:
+          - uid: slo-canary-fast-burn
+            title: Canary SLO Fast Burn
+            condition: A
+            labels:
+              severity: warning
+              source: sre
+              slo: canary-availability
+            annotations:
+              summary: "Canary service SLO burning fast ({{ $value }} error rate over 3m)"
+              description: "probe_success burn rate exceeds fast-burn threshold — canary service availability SLO at risk"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sre-slo-burn.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: (1 - avg_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3m])) > 0.14
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 1m
+
+  soc-rules.yaml: |
+    apiVersion: 1
+    deleteRules:
+      - orgId: 1
+        uid: soc-trivy-critical-cve
+      - orgId: 1
+        uid: soc-trivy-cve-digest
+    groups:
+      - orgId: 1
+        name: SOC - Runtime Security
+        folder: SOC Alerts
+        interval: 1m
+        rules:
+          - uid: soc-falco-critical
+            title: Falco Critical/Emergency Event
+            condition: A
+            labels:
+              severity: critical
+              source: security
+            annotations:
+              summary: "Falco {{ $labels.falco_rule }} fired at {{ $labels.falco_priority }}"
+              description: "Runtime security event detected. Review pod and consider Talon response."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-critical.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum by (falco_rule, falco_priority) (count_over_time({source="security/falco", falco_priority=~"Critical|Emergency"}[5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 2m
+
+          - uid: soc-falco-error
+            title: Falco Error Priority Sustained
+            condition: A
+            labels:
+              severity: warning
+              source: security
+            annotations:
+              summary: "Falco {{ $labels.falco_rule }} — {{ $value }} Error-priority events in 5m"
+              description: "Multiple error-level Falco detections — may indicate active threat or noisy rule."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-error.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum by (falco_rule) (count_over_time({source="security/falco", falco_priority="Error"}[5m])) > 3
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 2m
+
+          - uid: soc-talon-response
+            title: Falco Talon Response Triggered
+            condition: A
+            labels:
+              severity: warning
+              source: security
+            annotations:
+              summary: "Falco Talon terminated or labelled a pod"
+              description: "Automated response fired — review the triggering Falco event and affected workload."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-talon-response.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({source="security/falco-talon"} |= "trigger" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: soc-baseline-anomaly
+            title: Security Baseline Anomaly Detected
+            condition: A
+            labels:
+              severity: warning
+              source: security
+              alert_class: anomaly
+            annotations:
+              summary: "Security metric spike: {{ $labels.metric_name }}"
+              description: "A security metric exceeded 3x its 7-day hourly baseline. Check baseline-collector pod logs in security namespace for details."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-critical.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 7200, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({namespace="security"} |= `"security_anomaly": true` [2h])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: soc-sigma-match-critical
+            title: Sigma Critical Match Detected
+            condition: A
+            labels:
+              severity: critical
+              source: security
+              alert_class: sigma
+            annotations:
+              summary: "Sigma rule matched: {{ $labels.rule_title }}"
+              description: "sigma-scanner detected a critical/high-level Sigma rule match. Check security/sigma-scanner pod logs and sigma_matches table in ClickHouse."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-falco-critical.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({namespace="security"} |= `"sigma_match": true` | json | rule_level=~"critical|high" [10m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: soc-yara-high-severity
+            title: YARA High-Severity Match Detected
+            condition: A
+            labels:
+              severity: critical
+              team: soc
+              source: yara
+            annotations:
+              summary: "YARA high-severity malware detection on {{ $labels.pod }}"
+              description: "A high-severity YARA rule matched on a file. Investigate the yara-scanner pod logs in the security namespace immediately."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-yara-high-severity.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({namespace="security", app="yara-scanner"} |= "yara_match" |= "WebShell" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: soc-yara-suspicious-file
+            title: YARA Rule Match Detected
+            condition: A
+            labels:
+              severity: warning
+              team: soc
+              source: yara
+            annotations:
+              summary: "YARA rule match detected on {{ $labels.pod }}"
+              description: "A YARA rule matched on a file in the cluster. Review the security/yara-scanner pod logs to investigate."
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/soc-yara-suspicious-file.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({namespace="security", app="yara-scanner"} |= "yara_match" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 2m
+
+  sigma-loki-rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: Sigma - Linux Threat Detection
+        folder: SOC Alerts
+        interval: 1m
+        rules:
+          - uid: sigma-reverse-shell
+            title: Suspicious Reverse Shell
+            condition: A
+            labels:
+              severity: critical
+              mitre_technique: T1059.004
+              source: sigma
+            annotations:
+              summary: "Reverse shell attempt detected"
+              description: "Bash interactive reverse shell pattern detected in pod logs — potential command injection or malware"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-reverse-shell.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "bash -i" |= ">&" |= "/dev/tcp" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-shadow-read
+            title: Credential File Read Attempt
+            condition: A
+            labels:
+              severity: high
+              mitre_technique: T1003.008
+              source: sigma
+            annotations:
+              summary: "Shadow or passwd file access detected"
+              description: "Attempt to read /etc/shadow or /etc/passwd — potential credential theft"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-shadow-read.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "/etc/shadow" |= "cat" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-nmap-scan
+            title: Network Scanning Tool Detected
+            condition: A
+            labels:
+              severity: warning
+              mitre_technique: T1046
+              source: sigma
+            annotations:
+              summary: "Nmap or similar scanning tool executed"
+              description: "Network reconnaissance tool detected in pod — potential lateral movement or reconnaissance phase"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-nmap-scan.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "nmap " |= "-sV" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-suid-modification
+            title: SUID/SGID Bit Modification
+            condition: A
+            labels:
+              severity: high
+              mitre_technique: T1548.001
+              source: sigma
+            annotations:
+              summary: "SUID or SGID bit set on file"
+              description: "Executable SUID/SGID modification detected — potential privilege escalation vector"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-suid-modification.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "chmod +s" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-chroot-escape
+            title: Container Escape via Chroot
+            condition: A
+            labels:
+              severity: critical
+              mitre_technique: T1611
+              source: sigma
+            annotations:
+              summary: "Container escape attempt via chroot detected"
+              description: "Chroot with /proc/1/root pattern detected — potential container breakout"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-chroot-escape.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "chroot" |= "/proc/1/root" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-base64-payload
+            title: Base64-Encoded Payload Execution
+            condition: A
+            labels:
+              severity: high
+              mitre_technique: T1059
+              source: sigma
+            annotations:
+              summary: "Base64-encoded command execution detected"
+              description: "Suspicious base64 decode and bash execution — common obfuscation technique in malware"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-base64-payload.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "base64 -d" |= "bash" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-cron-modification
+            title: Cron Job Modification
+            condition: A
+            labels:
+              severity: warning
+              mitre_technique: T1053
+              source: sigma
+            annotations:
+              summary: "Crontab modification detected"
+              description: "Cron job added or modified — potential persistence mechanism"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-cron-modification.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="loki.source.kubernetes.pods", instance!~"observability/.*"} |= "/etc/crontab" |= "echo" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+          - uid: sigma-k8s-pod-exec
+            title: Kubernetes Pod Exec Access
+            condition: A
+            labels:
+              severity: warning
+              mitre_technique: T1059
+              source: sigma
+            annotations:
+              summary: "kubectl exec or similar pod access detected"
+              description: "Interactive access to pod shell detected — verify authorization and purpose"
+              runbook_url: "https://github.com/getpanops/panops/blob/main/docs/runbooks/sigma-k8s-pod-exec.md"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: |
+                    sum(count_over_time({job="kube-audit"} |= "pods/exec" [5m])) > 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0s
+
+  panops-infra-rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: PanOps - Infrastructure
+        folder: SRE Alerts
+        interval: 1m
+        rules:
+          - uid: panops-assembler-down
+            title: PanOps Assembler Down
+            condition: A
+            labels:
+              severity: critical
+              team: noc
+            annotations:
+              summary: "PanOps assembler is unavailable"
+              description: "The PanOps assembler deployment has no available replicas. Alert classification, remediation, and Matrix notifications are suspended."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: |
+                    kube_deployment_status_replicas_available{namespace="panops",deployment="panops-assembler"} == 0
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: Alerting
+            execErrState: Alerting
+            for: 2m
+
+          - uid: panops-heartbeat-missing
+            title: PanOps Heartbeat Missing
+            condition: A
+            labels:
+              severity: critical
+              team: noc
+            annotations:
+              summary: "PanOps assembler heartbeat not seen in 15 minutes"
+              description: "No heartbeat row written to panops.happenings in the last 15 minutes. The assembler may be crashed, stuck in a poll loop hang, or unable to reach ClickHouse."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 900, to: 0 }
+                datasourceUid: clickhouse
+                model:
+                  rawSql: |
+                    SELECT count() AS cnt
+                    FROM panops.happenings
+                    WHERE classifier_route = 'heartbeat'
+                      AND opened_at > now() - INTERVAL 15 MINUTE
+                  format: table
+            noDataState: Alerting
+            execErrState: Alerting
+            for: 0s
+
+          - uid: panops-llm-jobs-failing
+            title: PanOps LLM Jobs Failing
+            condition: A
+            labels:
+              severity: warning
+              team: noc
+            annotations:
+              summary: "PanOps LLM jobs are failing repeatedly"
+              description: "More than 3 panops-llm-* Jobs have failed in the last hour. The LLM circuit breaker may have opened. Novel happenings are not receiving LLM analysis."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 3600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  expr: |
+                    sum(increase(kube_job_failed{namespace="panops",job_name=~"panops-llm-.*"}[1h])) > 3
+                  queryType: instant
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+            noDataState: OK
+            execErrState: OK
+            for: 0m

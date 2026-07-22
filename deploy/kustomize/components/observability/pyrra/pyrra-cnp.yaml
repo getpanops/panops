@@ -1,0 +1,39 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: pyrra
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app: pyrra-api
+
+  ingress:
+  # Web gateway → Pyrra UI
+  - fromEntities:
+    - ingress
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+
+  egress:
+  # Pyrra API queries gigapipe for PromQL
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+        app: gigapipe
+    toPorts:
+    - ports:
+      - port: "3100"
+        protocol: TCP
+  # DNS
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP

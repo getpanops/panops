@@ -1,0 +1,57 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: intra-namespace-allow
+  namespace: security
+  annotations:
+    description: "Allow intra-namespace traffic + platform essentials for security namespace (Falco, Talon, Trivy)"
+spec:
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+
+  endpointSelector: {}
+
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: security
+
+  - fromEntities:
+    - host
+
+  # Allow Alloy cluster-agent to scrape Trivy metrics on port 8080
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: security
+
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+
+  - toEntities:
+    - kube-apiserver
+
+  # Falco rule/plugin downloads + Trivy vulnerability DB downloads
+  - toEntities:
+    - world
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP

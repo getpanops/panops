@@ -1,0 +1,78 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: blackbox-exporter
+  namespace: observability
+  annotations:
+    description: "Allow blackbox-exporter to probe HTTP and TCP endpoints"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: blackbox-exporter
+
+  ingress:
+  # Allow scraping from Alloy in observability namespace
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+    toPorts:
+    - ports:
+      - port: "9115"
+        protocol: TCP
+
+  egress:
+  # Allow DNS queries to kube-dns
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+
+  # Allow discovering services (kube-apiserver access)
+  - toEntities:
+    - kube-apiserver
+
+  # Allow HTTP probes to cluster-internal services.
+  # Add entries for each namespace/service you want blackbox to probe.
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: validation
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+      - port: "9099"
+        protocol: TCP
+
+  # Allow HTTP/HTTPS probes to the world
+  - toEntities:
+    - world
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+      - port: "443"
+        protocol: TCP
+
+  # Allow TCP probes to any port in the world
+  - toEntities:
+    - world
+    toPorts:
+    - ports:
+      - port: "1"
+        protocol: TCP
+        endPort: 65535
+

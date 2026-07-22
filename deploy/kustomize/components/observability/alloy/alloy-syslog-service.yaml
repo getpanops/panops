@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy-syslog
+  namespace: observability
+  labels:
+    app: alloy-syslog
+    io.cilium/lb-ipam-ips: "true"
+  annotations:
+    io.cilium/lb-ipam-ips: "CHANGE_ME_LB_IP"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  allocateLoadBalancerNodePorts: false
+  ports:
+  - name: syslog-udp
+    port: 514
+    targetPort: syslog-udp
+    protocol: UDP
+  - name: syslog-unifi
+    port: 5514
+    targetPort: syslog-unifi
+    protocol: UDP
+  selector:
+    app: alloy-cluster

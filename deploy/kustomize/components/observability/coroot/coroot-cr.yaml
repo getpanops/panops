@@ -1,0 +1,26 @@
+apiVersion: coroot.com/v1
+kind: Coroot
+metadata:
+  name: platform
+  namespace: observability
+spec:
+  externalClickhouse:
+    address: observability-clickhouse-clickhouse-headless.observability.svc.cluster.local:9000
+    user: default
+    database: coroot
+    passwordSecret:
+      name: coroot-clickhouse-auth
+      key: password
+
+  externalPrometheus:
+    url: http://gigapipe.observability.svc.cluster.local:3100
+    remoteWriteURL: http://gigapipe.observability.svc.cluster.local:3100/api/prom/push
+
+  nodeAgent:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 4Gi

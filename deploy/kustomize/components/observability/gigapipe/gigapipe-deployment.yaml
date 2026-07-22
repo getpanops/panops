@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gigapipe
+  namespace: observability
+  labels:
+    app: gigapipe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gigapipe
+  template:
+    metadata:
+      labels:
+        app: gigapipe
+    spec:
+      containers:
+      - name: gigapipe
+        image: ghcr.io/metrico/gigapipe:v4.2.4
+        ports:
+        - name: http
+          containerPort: 3100
+          protocol: TCP
+        env:
+        # ClickHouse connection
+        - name: CLICKHOUSE_SERVER
+          value: observability-clickhouse-clickhouse-headless.observability.svc.cluster.local
+        - name: CLICKHOUSE_PORT
+          value: "9000"
+        - name: CLICKHOUSE_DB
+          value: qryn
+        - name: CLICKHOUSE_PROTO
+          value: tcp
+        - name: CLICKHOUSE_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-password
+              key: auth
+
+        # Data retention
+        - name: LABELS_DAYS
+          value: "7"
+        - name: SAMPLES_DAYS
+          value: "7"
+        # Keep in-memory label cache bounded.
+        - name: BULK_MAXCACHE
+          value: "20000"
+        # Reduce gigapipe self-log volume.
+        - name: LOG_LEVEL
+          value: "warn"
+        # Runtime memory guardrails (Go runtime)
+        - name: GOMEMLIMIT
+          value: "1800MiB"
+        - name: GOGC
+          value: "50"
+        # Cap Prometheus query fan-out to prevent runaway scans across large
+        # partitions from triggering PQRC002 evaluation timeouts.
+        - name: ADVANCED_PROMETHEUS_MAX_SAMPLES
+          value: "50000000"
+
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+
+        livenessProbe:
+          httpGet:
+            path: /loki/api/v1/labels
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 25
+          failureThreshold: 5
+
+        readinessProbe:
+          httpGet:
+            path: /loki/api/v1/labels
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 15
+          timeoutSeconds: 15

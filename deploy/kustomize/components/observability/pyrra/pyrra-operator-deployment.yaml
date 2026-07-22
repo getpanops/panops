@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyrra-operator
+  namespace: observability
+  labels:
+    app: pyrra-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pyrra-operator
+  template:
+    metadata:
+      labels:
+        app: pyrra-operator
+    spec:
+      serviceAccountName: pyrra
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+      - name: pyrra
+        image: ghcr.io/pyrra-dev/pyrra:v0.10.1
+        args:
+        - kubernetes
+        - --generic-rules
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: api
+          containerPort: 9444
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyrra-operator
+  namespace: observability
+  labels:
+    app: pyrra-operator
+spec:
+  selector:
+    app: pyrra-operator
+  ports:
+  - name: api
+    port: 9444
+    targetPort: 9444
+    protocol: TCP

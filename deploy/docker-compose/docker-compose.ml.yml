@@ -1,0 +1,38 @@
+---
+# PanOps ML Tier — CBR embeddings, dream cycle, memory MCP
+#
+# Extends the core stack with ML capabilities. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.ml.yml up -d
+#
+# Adds:
+#   - CBR kNN similarity matching via fastembed (classifier module)
+#   - Dream cycle for rule synthesis (consolidation module)
+#   - memory-mcp for AI agent persistent memory
+#
+# Requirements: ~2 GB RAM for embedding model (all-MiniLM-L6-v2, 384-dim)
+
+services:
+
+  panops-assembler:
+    environment:
+      XOPS_ML_ENABLED: "true"
+
+  # ── Memory MCP (FTS5-backed agent memory) ────────────────────────────────────
+  memory-mcp:
+    image: ${MEMORY_MCP_IMAGE:-ghcr.io/getpanops/panops/memory-mcp:latest}
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CH_URL: http://clickhouse:8123
+      CH_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      PORT: "8082"
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

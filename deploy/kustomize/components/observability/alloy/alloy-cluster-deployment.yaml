@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy-cluster
+  namespace: observability
+  labels:
+    app: alloy-cluster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy-cluster
+  template:
+    metadata:
+      labels:
+        app: alloy-cluster
+    spec:
+      serviceAccountName: alloy-cluster
+      containers:
+      - name: alloy
+        image: grafana/alloy:v1.17.0
+        args:
+        - run
+        - /etc/alloy/config.alloy
+        - --server.http.listen-addr=0.0.0.0:12345
+        - --storage.path=/var/lib/alloy/data
+        env:
+        - name: ALLOY_DEPLOY_MODE
+          value: "deployment"
+        ports:
+        - name: http-metrics
+          containerPort: 12345
+          protocol: TCP
+        - name: syslog-udp
+          containerPort: 514
+          protocol: UDP
+        - name: syslog-unifi
+          containerPort: 5514
+          protocol: UDP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/alloy
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: alloy-cluster-config

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-ruler-config
+  namespace: observability
+data:
+  prometheus.yml: |
+    global:
+      evaluation_interval: 30s
+
+    rule_files:
+      - /etc/prometheus/rules/*.yaml
+
+    remote_write:
+      - url: http://gigapipe.observability.svc.cluster.local:3100/api/prom/push
+        queue_config:
+          max_samples_per_send: 1000
+          batch_send_deadline: 5s

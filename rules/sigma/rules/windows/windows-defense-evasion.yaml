@@ -1,0 +1,30 @@
+title: Windows Defender Disabled
+name: windows_defender_disabled
+status: stable
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4689
+    ProcessName|endswith: '\MsMpEng.exe'
+  condition: selection
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+---
+title: Security Audit Policy Changed
+name: windows_audit_policy_changed
+status: stable
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4719
+  condition: selection
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.t1562.002

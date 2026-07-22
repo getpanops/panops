@@ -1,0 +1,47 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: intra-namespace-allow
+  namespace: observability
+  annotations:
+    description: "Allow intra-namespace traffic + platform essentials for observability stack"
+spec:
+  # Stage 2: ENFORCEMENT ENABLED
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+
+  # Apply to ALL pods in observability namespace
+  endpointSelector: {}
+
+  ingress:
+  # Allow all traffic from same namespace
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+
+  # Allow kubelet probes from host
+  - fromEntities:
+    - host
+
+  egress:
+  # Allow all traffic to same namespace
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+
+  # Platform essential: DNS resolution via kube-dns
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+
+  # Platform essential: Kubernetes API server
+  - toEntities:
+    - kube-apiserver

@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: yara-scanner
+  namespace: security
+  labels:
+    app: yara-scanner
+spec:
+  selector:
+    matchLabels:
+      app: yara-scanner
+  template:
+    metadata:
+      labels:
+        app: yara-scanner
+        component: security
+    spec:
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: yara-scanner
+        image: alpine:3.19
+        command:
+        - /bin/sh
+        - -c
+        - |
+          apk add --no-cache yara 2>/dev/null
+          while true; do
+            find /scan-paths -maxdepth 3 -type f -size -10M 2>/dev/null | \
+            xargs -r yara /rules/yara-rules.yar 2>/dev/null | \
+            while read match; do
+              echo "{\"yara_match\": \"${match}\", \"timestamp\": \"$(date -Iseconds)\", \"node\": \"$(hostname)\"}"
+            done
+            sleep 300
+          done
+        volumeMounts:
+        - name: rules
+          mountPath: /rules
+          readOnly: true
+        - name: tmp
+          mountPath: /scan-paths/tmp
+          readOnly: true
+        - name: var-tmp
+          mountPath: /scan-paths/vartmp
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "pgrep -f 'yara /rules' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 60
+      volumes:
+      - name: rules
+        configMap:
+          name: yara-rules
+      - name: tmp
+        hostPath:
+          path: /tmp
+          type: Directory
+      - name: var-tmp
+        hostPath:
+          path: /var/tmp
+          type: Directory
+      nodeSelector: {}
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      - operator: Exists
+        effect: NoExecute

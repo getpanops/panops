@@ -1,0 +1,29 @@
+title: Hyper-V VM Unexpected Shutdown
+name: hyperv_vm_unexpected_shutdown
+status: experimental
+logsource:
+  product: windows
+  service: microsoft-windows-hyper-v-worker-admin
+detection:
+  selection:
+    EventID:
+      - 18590  # VM stopped unexpectedly
+      - 18570  # VM critical error
+  condition: selection
+level: high
+tags:
+  - availability
+---
+title: Hyper-V Live Migration Failure
+name: hyperv_migration_failure
+status: experimental
+logsource:
+  product: windows
+  service: microsoft-windows-hyper-v-worker-admin
+detection:
+  selection:
+    EventID: 21502  # live migration failed
+  condition: selection
+level: medium
+tags:
+  - availability

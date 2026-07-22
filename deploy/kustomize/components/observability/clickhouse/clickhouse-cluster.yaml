@@ -1,0 +1,87 @@
+apiVersion: clickhouse.com/v1alpha1
+kind: ClickHouseCluster
+metadata:
+  name: observability-clickhouse
+  namespace: observability
+spec:
+  replicas: 1
+
+  keeperClusterRef:
+    name: observability-keeper
+
+  # Storage on Ceph RBD NVMe pool
+  dataVolumeClaimSpec:
+    storageClassName: rbd-nvme
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 180Gi
+
+  containerTemplate:
+    image:
+      tag: "26.3.9.8"
+    env:
+    - name: CH_S3_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: clickhouse-s3-creds
+          key: access_key_id
+    - name: CH_S3_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: clickhouse-s3-creds
+          key: secret_access_key
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 6Gi
+
+  # ClickHouse server configuration
+  settings:
+    # Keep internal server logs bounded and low-noise.
+    logger:
+      level: information
+      size: 100M
+      count: 10
+
+    extraConfig:
+      named_collections_storage:
+        type: local
+      async_load_databases: 1
+      query_log:
+        ttl: event_date + INTERVAL 2 DAY DELETE
+      part_log:
+        ttl: event_date + INTERVAL 2 DAY DELETE
+      text_log:
+        ttl: event_date + INTERVAL 2 DAY DELETE
+      merge_tree:
+        max_suspicious_broken_parts: 500
+
+      storage_configuration:
+        disks:
+          cold:
+            type: s3
+            endpoint: "http://s3.YOUR_DOMAIN:7480/clickhouse-cold/"
+            access_key_id:
+              "@from_env": CH_S3_ACCESS_KEY_ID
+            secret_access_key:
+              "@from_env": CH_S3_SECRET_ACCESS_KEY
+            use_path_style_request: "1"
+        policies:
+          tiered:
+            volumes:
+              default:
+                disk: default
+              cold:
+                disk: cold
+                move_factor: "0.2"
+
+    # Default user password from secret
+    defaultUserPassword:
+      secret:
+        name: clickhouse-password
+        key: password

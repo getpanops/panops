@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baseline-collector-script
+  namespace: security
+data:
+  baseline-collector.py: |
+    #!/usr/bin/env python3
+    """
+    baseline-collector: Computes hourly security metric counts, stores them in
+    ClickHouse, then checks if the latest hour deviates > 3x from the 7-day
+    historical average for the same hour-of-week. Emits structured JSON logs
+    for Grafana alerting via Alloy/Loki.
+    
+    Runs as a Kubernetes CronJob at the top of every hour in the security namespace.
+    Anomaly detection only fires once at least 5 historical data points exist per
+    metric/hour-of-week bucket (prevents false alarms during warm-up).
+    """
+    import os, sys, json, datetime, time, urllib.request, urllib.parse
+    
+    LOKI_URL = os.environ.get("LOKI_URL", "http://gigapipe.observability.svc.cluster.local:3100")
+    CH_URL   = os.environ.get("CH_URL", "http://observability-clickhouse-clickhouse-headless.observability.svc.cluster.local:8123")
+    DEVIATION_THRESHOLD = float(os.environ.get("DEVIATION_THRESHOLD", "3.0"))
+    MIN_BASELINE_POINTS = int(os.environ.get("MIN_BASELINE_POINTS", "5"))
+    
+    METRICS = [
+        {
+            "name": "falco_critical_per_hour",
+            "description": "Falco Critical/Emergency events",
+            "logql": 'sum(count_over_time({source="security/falco",falco_priority=~"Critical|Emergency"}[1h]))',
+        },
+        {
+            "name": "falco_all_per_hour",
+            "description": "All Falco events",
+            "logql": 'sum(count_over_time({source="security/falco"}[1h]))',
+        },
+        {
+            "name": "audit_writes_per_hour",
+            "description": "K8s audit write events",
+            "logql": 'sum(count_over_time({job="kubernetes/audit"}[1h]))',
+        },
+        {
+            "name": "audit_exec_per_hour",
+            "description": "kubectl exec / pod shell access events",
+            "logql": 'sum(count_over_time({job="kubernetes/audit"} |= "pods/exec" [1h]))',
+        },
+        {
+            "name": "sigma_matches_per_hour",
+            "description": "Sigma rule matches (from scanner)",
+            "logql": 'sum(count_over_time({namespace="security"} |= `"sigma_match": true` [1h]))',
+        },
+    ]
+    
+    CREATE_BASELINES = """
+    CREATE TABLE IF NOT EXISTS qryn.security_baselines (
+        hour_bucket    DateTime,
+        metric_name    LowCardinality(String),
+        value          Float64,
+        day_of_week    UInt8,
+        hour_of_day    UInt8
+    ) ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(hour_bucket)
+    ORDER BY (metric_name, hour_bucket)
+    TTL hour_bucket + INTERVAL 90 DAY
+    SETTINGS ttl_only_drop_parts = 1
+    """
+    
+    CREATE_ANOMALIES = """
+    CREATE TABLE IF NOT EXISTS qryn.security_anomalies (
+        detected_at     DateTime,
+        metric_name     LowCardinality(String),
+        description     String,
+        current_value   Float64,
+        baseline_avg    Float64,
+        deviation_ratio Float64,
+        hour_bucket     DateTime
+    ) ENGINE = MergeTree()
+    ORDER BY (detected_at, metric_name)
+    TTL detected_at + INTERVAL 30 DAY
+    SETTINGS ttl_only_drop_parts = 1
+    """
+    
+    
+    def ch_exec(sql):
+        data = sql.encode()
+        req = urllib.request.Request(CH_URL, data=data, method="POST")
+        req.add_header("Content-Type", "text/plain")
+        req.add_header("X-ClickHouse-User", os.environ.get("CH_USER", "default"))
+        req.add_header("X-ClickHouse-Key",  os.environ.get("CH_PASSWORD", ""))
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.read().decode()
+    
+    
+    def loki_count(logql, start_ns, end_ns):
+        """Run a metric LogQL query and return the scalar count for the window."""
+        params = urllib.parse.urlencode({
+            "query": logql,
+            "start": str(start_ns),
+            "end":   str(end_ns),
+            "step":  "3600",
+            "limit": "1",
+        })
+        url = f"{LOKI_URL}/loki/api/v1/query_range?{params}"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                data = json.loads(r.read())
+        except Exception as e:
+            print(f"  WARN loki query failed: {e}", flush=True)
+            return 0.0
+    
+        results = data.get("data", {}).get("result", [])
+        if not results:
+            return 0.0
+        values = results[0].get("values", [])
+        return float(values[-1][1]) if values else 0.0
+    
+    
+    def ch_scalar(sql):
+        result = ch_exec(sql).strip()
+        try:
+            return float(result)
+        except ValueError:
+            return None
+    
+    
+    def main():
+        print("baseline-collector starting", flush=True)
+    
+        for ddl in [CREATE_BASELINES, CREATE_ANOMALIES]:
+            try:
+                ch_exec(ddl)
+            except Exception as e:
+                print(f"ERROR: cannot init table: {e}", file=sys.stderr, flush=True)
+                sys.exit(1)
+    
+        now       = datetime.datetime.utcnow()
+        # Align to the completed hour (run at :05 → measure :00–:59)
+        hour_end  = now.replace(minute=0, second=0, microsecond=0)
+        hour_start = hour_end - datetime.timedelta(hours=1)
+    
+        start_ns = int(hour_start.timestamp() * 1e9)
+        end_ns   = int(hour_end.timestamp() * 1e9)
+    
+        dow = hour_start.weekday()   # 0=Mon … 6=Sun
+        hod = hour_start.hour
+    
+        print(f"measuring hour {hour_start.isoformat()}Z → {hour_end.isoformat()}Z (dow={dow} hod={hod})", flush=True)
+    
+        for m in METRICS:
+            name  = m["name"]
+            value = loki_count(m["logql"], start_ns, end_ns)
+            print(f"  {name} = {value:.0f}", flush=True)
+    
+            # Insert baseline data point
+            insert = (
+                f"INSERT INTO qryn.security_baselines "
+                f"(hour_bucket, metric_name, value, day_of_week, hour_of_day) VALUES "
+                f"('{hour_start.strftime('%Y-%m-%d %H:%M:%S')}', '{name}', {value}, {dow}, {hod})"
+            )
+            try:
+                ch_exec(insert)
+            except Exception as e:
+                print(f"  ERROR inserting baseline: {e}", file=sys.stderr, flush=True)
+                continue
+    
+            # Compute 7-day historical average for same dow+hod (skip first 5 points)
+            baseline_sql = f"""
+                SELECT count(), avg(value)
+                FROM qryn.security_baselines
+                WHERE metric_name = '{name}'
+                  AND day_of_week = {dow}
+                  AND hour_of_day = {hod}
+                  AND hour_bucket < '{hour_start.strftime('%Y-%m-%d %H:%M:%S')}'
+                  AND hour_bucket >= '{(hour_start - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')}'
+            """
+            try:
+                row = ch_exec(baseline_sql).strip()
+                parts = row.split("\t")
+                n_points = int(parts[0]) if parts[0] else 0
+                avg_val  = float(parts[1]) if len(parts) > 1 and parts[1] else 0.0
+            except Exception as e:
+                print(f"  WARN baseline query failed: {e}", flush=True)
+                continue
+    
+            if n_points < MIN_BASELINE_POINTS:
+                print(f"  {name}: skipping anomaly check ({n_points} < {MIN_BASELINE_POINTS} data points)", flush=True)
+                continue
+    
+            if avg_val == 0:
+                # Zero baseline — alert only if current is non-zero and significant
+                if value > 5:
+                    ratio = float("inf")
+                else:
+                    continue
+            else:
+                ratio = value / avg_val
+    
+            if ratio >= DEVIATION_THRESHOLD:
+                desc = (
+                    f"{m['description']}: {value:.0f} events this hour vs "
+                    f"{avg_val:.1f} avg (ratio={ratio:.1f}x, baseline_n={n_points})"
+                )
+                print(json.dumps({
+                    "security_anomaly": True,
+                    "metric_name":      name,
+                    "description":      desc,
+                    "current_value":    value,
+                    "baseline_avg":     round(avg_val, 2),
+                    "deviation_ratio":  round(ratio, 2),
+                    "hour_bucket":      hour_start.isoformat() + "Z",
+                }), flush=True)
+    
+                # Persist anomaly
+                anom_sql = (
+                    f"INSERT INTO qryn.security_anomalies "
+                    f"(detected_at, metric_name, description, current_value, baseline_avg, deviation_ratio, hour_bucket) "
+                    f"VALUES (now(), '{name}', '{desc.replace(chr(39), '')}', "
+                    f"{value}, {avg_val:.4f}, {ratio:.4f}, "
+                    f"'{hour_start.strftime('%Y-%m-%d %H:%M:%S')}')"
+                )
+                try:
+                    ch_exec(anom_sql)
+                except Exception as e:
+                    print(f"  ERROR inserting anomaly: {e}", file=sys.stderr, flush=True)
+    
+        print("baseline-collector done", flush=True)
+    
+    
+    if __name__ == "__main__":
+        main()
+    

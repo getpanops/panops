@@ -1,0 +1,24 @@
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    url: http://gigapipe:3100
+    access: proxy
+    isDefault: false
+
+  - name: Prometheus
+    type: prometheus
+    url: http://gigapipe:3100
+    access: proxy
+    isDefault: true
+
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    url: http://clickhouse:8123
+    access: proxy
+    jsonData:
+      server: clickhouse
+      port: 8123
+      username: default
+    secureJsonData:
+      password: "${CLICKHOUSE_PASSWORD}"

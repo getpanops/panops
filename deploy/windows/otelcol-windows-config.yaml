@@ -1,0 +1,129 @@
+receivers:
+  windowseventlog/security:
+    channel: Security
+    start_at: end
+    poll_interval: 10s
+    operators:
+      - type: json_parser
+        if: 'body matches "^\\{"'
+      - type: add
+        field: attributes.log.source
+        value: windows-security
+
+  windowseventlog/system:
+    channel: System
+    start_at: end
+    poll_interval: 30s
+    operators:
+      - type: add
+        field: attributes.log.source
+        value: windows-system
+
+  windowseventlog/application:
+    channel: Application
+    start_at: end
+    poll_interval: 30s
+    operators:
+      - type: add
+        field: attributes.log.source
+        value: windows-application
+
+  windowseventlog/sysmon:
+    channel: Microsoft-Windows-Sysmon/Operational
+    start_at: end
+    poll_interval: 5s
+    operators:
+      - type: add
+        field: attributes.log.source
+        value: sysmon
+
+  windowseventlog/hyperv:
+    channel: Microsoft-Windows-Hyper-V-Worker-Admin
+    start_at: end
+    poll_interval: 30s
+    operators:
+      - type: add
+        field: attributes.log.source
+        value: hyperv
+    # Note: this channel only exists on Hyper-V hosts — remove if not applicable
+
+  windowsperfcounters:
+    collection_interval: 60s
+    perfcounters:
+      - object: "Processor"
+        instances: ["_Total"]
+        counters:
+          - name: "% Processor Time"
+            metric: "system.cpu.utilization"
+      - object: "Memory"
+        counters:
+          - name: "Available MBytes"
+            metric: "system.memory.available"
+          - name: "% Committed Bytes In Use"
+            metric: "system.memory.utilization"
+      - object: "LogicalDisk"
+        instances: ["_Total"]
+        counters:
+          - name: "% Free Space"
+            metric: "system.disk.free_pct"
+          - name: "Disk Read Bytes/sec"
+            metric: "system.disk.read_bytes"
+          - name: "Disk Write Bytes/sec"
+            metric: "system.disk.write_bytes"
+      - object: "Network Interface"
+        instances: ["*"]
+        counters:
+          - name: "Bytes Sent/sec"
+            metric: "system.network.io.transmit"
+          - name: "Bytes Received/sec"
+            metric: "system.network.io.receive"
+
+processors:
+  resourcedetection:
+    detectors: [system, env]
+    system:
+      hostname_sources: ["os"]
+
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+
+  attributes/add_host:
+    actions:
+      - key: host.name
+        action: insert
+        value: ${COMPUTERNAME}
+      - key: os.type
+        action: insert
+        value: windows
+
+exporters:
+  loki:
+    endpoint: ${GIGAPIPE_URL}/loki/api/v1/push
+    labels:
+      resource:
+        host.name: "host"
+        log.source: "job"
+        os.type: "os_type"
+
+  prometheusremotewrite:
+    endpoint: ${GIGAPIPE_URL}/api/v1/write
+    resource_to_telemetry_conversion:
+      enabled: true
+
+service:
+  pipelines:
+    logs:
+      receivers:
+        - windowseventlog/security
+        - windowseventlog/system
+        - windowseventlog/application
+        - windowseventlog/sysmon
+        - windowseventlog/hyperv
+      processors: [resourcedetection, attributes/add_host, batch]
+      exporters: [loki]
+
+    metrics:
+      receivers: [windowsperfcounters]
+      processors: [resourcedetection, attributes/add_host, batch]
+      exporters: [prometheusremotewrite]

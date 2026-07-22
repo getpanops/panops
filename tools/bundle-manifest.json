@@ -1,0 +1,7 @@
+{
+  "_comment": "Pin exact digests after running CI jobs manually. Update :latest tags to @sha256:... for airgap.",
+  "intel": "ghcr.io/getpanops/panops/intel:latest",
+  "model": "ghcr.io/getpanops/panops/model:latest",
+  "sigma_scanner": "ghcr.io/getpanops/panops/sigma-scanner:latest",
+  "assembler": "ghcr.io/getpanops/panops/assembler:latest"
+}

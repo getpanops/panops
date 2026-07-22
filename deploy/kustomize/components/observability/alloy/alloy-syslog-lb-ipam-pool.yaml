@@ -1,0 +1,10 @@
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: observability-syslog-vip
+spec:
+  blocks:
+    - cidr: CHANGE_ME_LB_IP/32
+  serviceSelector:
+    matchLabels:
+      app: alloy-syslog

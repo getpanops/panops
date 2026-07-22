@@ -1,0 +1,33 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: syslog-ingress
+  namespace: observability
+spec:
+  description: "Allow syslog ingress to Alloy from network devices and hypervisors"
+  endpointSelector:
+    matchLabels:
+      app: alloy-cluster
+  ingress:
+  - fromCIDRSet:
+    - cidr: CHANGE_ME_GW_IP/32
+    - cidr: CHANGE_ME_ROUTER_IP/32
+    - cidr: CHANGE_ME_HV1_IP/32
+    - cidr: CHANGE_ME_HV2_IP/32
+    - cidr: CHANGE_ME_HV3_IP/32
+    - cidr: CHANGE_ME_NODE1_IP/32
+    - cidr: CHANGE_ME_NODE2_IP/32
+    - cidr: CHANGE_ME_NODE3_IP/32
+    toPorts:
+    - ports:
+      - port: "514"
+        protocol: UDP
+  # UniFi devices (gateway, switches) send in syslog-ng ISO-timestamp format; handled
+  # by a dedicated listener on 5514 with use_incoming_timestamp=false
+  - fromCIDRSet:
+    - cidr: CHANGE_ME_GW_IP/32
+    - cidr: CHANGE_ME_ROUTER_IP/32
+    toPorts:
+    - ports:
+      - port: "5514"
+        protocol: UDP

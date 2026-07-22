@@ -1,0 +1,15 @@
+---
+# Source: falco-operator/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: falco-operator
+  namespace: security
+  labels:
+    helm.sh/chart: falco-operator-0.3.0
+    app.kubernetes.io/name: falco-operator
+    app.kubernetes.io/instance: falco-operator
+    app.kubernetes.io/version: "0.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: falco
+automountServiceAccountToken: true

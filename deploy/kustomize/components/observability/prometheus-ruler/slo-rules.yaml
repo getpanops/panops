@@ -1,0 +1,1101 @@
+groups:
+- name: sloth-slo-sli-recordings-aegis-requests-availability
+  rules:
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[5m])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[5m])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 5m
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate5m
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[30m])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[30m])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 30m
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate30m
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[1h])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[1h])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 1h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate1h
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[2h])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[2h])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 2h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate2h
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[6h])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[6h])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 6h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate6h
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[1d])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[1d])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 1d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate1d
+  - expr: '(sum(rate(http_requests_total{namespace="aegis",code=~"5.."}[3d])))
+
+      /
+
+      (sum(rate(http_requests_total{namespace="aegis"}[3d])))
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 3d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate3d
+  - expr: 'sum_over_time(slo:sli_error:ratio_rate5m{sloth_id="aegis-requests-availability",
+      sloth_service="aegis", sloth_slo="requests-availability"}[30d])
+
+      / ignoring (sloth_window)
+
+      count_over_time(slo:sli_error:ratio_rate5m{sloth_id="aegis-requests-availability",
+      sloth_service="aegis", sloth_slo="requests-availability"}[30d])
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_window: 30d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate30d
+- name: sloth-slo-meta-recordings-aegis-requests-availability
+  rules:
+  - expr: vector(0.9990000000000001)
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      team: platform
+      tier: critical
+    record: slo:objective:ratio
+  - expr: vector(1-0.9990000000000001)
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      team: platform
+      tier: critical
+    record: slo:error_budget:ratio
+  - expr: vector(30)
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      team: platform
+      tier: critical
+    record: slo:time_period:days
+  - expr: 'slo:sli_error:ratio_rate5m{sloth_id="aegis-requests-availability", sloth_service="aegis",
+      sloth_slo="requests-availability"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="aegis-requests-availability", sloth_service="aegis",
+      sloth_slo="requests-availability"}
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      team: platform
+      tier: critical
+    record: slo:current_burn_rate:ratio
+  - expr: 'slo:sli_error:ratio_rate30d{sloth_id="aegis-requests-availability", sloth_service="aegis",
+      sloth_slo="requests-availability"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="aegis-requests-availability", sloth_service="aegis",
+      sloth_slo="requests-availability"}
+
+      '
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      team: platform
+      tier: critical
+    record: slo:period_burn_rate:ratio
+  - expr: 1 - slo:period_burn_rate:ratio{sloth_id="aegis-requests-availability", sloth_service="aegis",
+      sloth_slo="requests-availability"}
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      team: platform
+      tier: critical
+    record: slo:period_error_budget_remaining:ratio
+  - expr: vector(1)
+    labels:
+      sloth_id: aegis-requests-availability
+      sloth_mode: cli-gen-k8s
+      sloth_objective: '99.9'
+      sloth_service: aegis
+      sloth_slo: requests-availability
+      sloth_spec: sloth.slok.dev/v1
+      sloth_version: v0.16.0
+      team: platform
+      tier: critical
+    record: sloth_slo_info
+- name: sloth-slo-alerts-aegis-requests-availability
+  rules:
+  - alert: AegisHighErrorRate
+    annotations:
+      summary: Aegis error rate exceeds SLO budget
+      title: (page) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate5m{sloth_id=\"aegis-requests-availability\"\
+      , sloth_service=\"aegis\", sloth_slo=\"requests-availability\"} > (14.4 * 0.0009999999999999432))\
+      \ without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1h{sloth_id=\"\
+      aegis-requests-availability\", sloth_service=\"aegis\", sloth_slo=\"requests-availability\"\
+      } > (14.4 * 0.0009999999999999432)) without (sloth_window)\n)\nor\n(\n    max(slo:sli_error:ratio_rate30m{sloth_id=\"\
+      aegis-requests-availability\", sloth_service=\"aegis\", sloth_slo=\"requests-availability\"\
+      } > (6 * 0.0009999999999999432)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"\
+      aegis-requests-availability\", sloth_service=\"aegis\", sloth_slo=\"requests-availability\"\
+      } > (6 * 0.0009999999999999432)) without (sloth_window)\n)\n"
+    labels:
+      severity: critical
+      sloth_severity: page
+  - alert: AegisHighErrorRate
+    annotations:
+      summary: Aegis error rate exceeds SLO budget
+      title: (ticket) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate2h{sloth_id=\"aegis-requests-availability\"\
+      , sloth_service=\"aegis\", sloth_slo=\"requests-availability\"} > (3 * 0.0009999999999999432))\
+      \ without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1d{sloth_id=\"\
+      aegis-requests-availability\", sloth_service=\"aegis\", sloth_slo=\"requests-availability\"\
+      } > (3 * 0.0009999999999999432)) without (sloth_window)\n)\nor\n(\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"\
+      aegis-requests-availability\", sloth_service=\"aegis\", sloth_slo=\"requests-availability\"\
+      } > (1 * 0.0009999999999999432)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate3d{sloth_id=\"\
+      aegis-requests-availability\", sloth_service=\"aegis\", sloth_slo=\"requests-availability\"\
+      } > (1 * 0.0009999999999999432)) without (sloth_window)\n)\n"
+    labels:
+      severity: warning
+      sloth_severity: ticket
+- name: sloth-slo-sli-recordings-cert-manager-certificate-renewal-success
+  rules:
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[5m])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[5m])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 5m
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate5m
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[30m])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[30m])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 30m
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate30m
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[1h])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[1h])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 1h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate1h
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[2h])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[2h])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 2h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate2h
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[6h])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[6h])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 6h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate6h
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[1d])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[1d])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 1d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate1d
+  - expr: '(sum(rate(certmanager_http_acme_client_request_count{status!~"2.."}[3d])))
+
+      /
+
+      (sum(rate(certmanager_http_acme_client_request_count[3d])))
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 3d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate3d
+  - expr: 'sum_over_time(slo:sli_error:ratio_rate5m{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}[30d])
+
+      / ignoring (sloth_window)
+
+      count_over_time(slo:sli_error:ratio_rate5m{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}[30d])
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_window: 30d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate30d
+- name: sloth-slo-meta-recordings-cert-manager-certificate-renewal-success
+  rules:
+  - expr: vector(0.995)
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      team: platform
+      tier: critical
+    record: slo:objective:ratio
+  - expr: vector(1-0.995)
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      team: platform
+      tier: critical
+    record: slo:error_budget:ratio
+  - expr: vector(30)
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      team: platform
+      tier: critical
+    record: slo:time_period:days
+  - expr: 'slo:sli_error:ratio_rate5m{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      team: platform
+      tier: critical
+    record: slo:current_burn_rate:ratio
+  - expr: 'slo:sli_error:ratio_rate30d{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}
+
+      '
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      team: platform
+      tier: critical
+    record: slo:period_burn_rate:ratio
+  - expr: 1 - slo:period_burn_rate:ratio{sloth_id="cert-manager-certificate-renewal-success",
+      sloth_service="cert-manager", sloth_slo="certificate-renewal-success"}
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      team: platform
+      tier: critical
+    record: slo:period_error_budget_remaining:ratio
+  - expr: vector(1)
+    labels:
+      sloth_id: cert-manager-certificate-renewal-success
+      sloth_mode: cli-gen-k8s
+      sloth_objective: '99.5'
+      sloth_service: cert-manager
+      sloth_slo: certificate-renewal-success
+      sloth_spec: sloth.slok.dev/v1
+      sloth_version: v0.16.0
+      team: platform
+      tier: critical
+    record: sloth_slo_info
+- name: sloth-slo-alerts-cert-manager-certificate-renewal-success
+  rules:
+  - alert: CertManagerRenewalFailure
+    annotations:
+      summary: cert-manager renewal success rate below SLO
+      title: (page) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate5m{sloth_id=\"cert-manager-certificate-renewal-success\"\
+      , sloth_service=\"cert-manager\", sloth_slo=\"certificate-renewal-success\"\
+      } > (14.4 * 0.005)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1h{sloth_id=\"\
+      cert-manager-certificate-renewal-success\", sloth_service=\"cert-manager\",\
+      \ sloth_slo=\"certificate-renewal-success\"} > (14.4 * 0.005)) without (sloth_window)\n\
+      )\nor\n(\n    max(slo:sli_error:ratio_rate30m{sloth_id=\"cert-manager-certificate-renewal-success\"\
+      , sloth_service=\"cert-manager\", sloth_slo=\"certificate-renewal-success\"\
+      } > (6 * 0.005)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"\
+      cert-manager-certificate-renewal-success\", sloth_service=\"cert-manager\",\
+      \ sloth_slo=\"certificate-renewal-success\"} > (6 * 0.005)) without (sloth_window)\n\
+      )\n"
+    labels:
+      severity: critical
+      sloth_severity: page
+  - alert: CertManagerRenewalFailure
+    annotations:
+      summary: cert-manager renewal success rate below SLO
+      title: (ticket) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate2h{sloth_id=\"cert-manager-certificate-renewal-success\"\
+      , sloth_service=\"cert-manager\", sloth_slo=\"certificate-renewal-success\"\
+      } > (3 * 0.005)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1d{sloth_id=\"\
+      cert-manager-certificate-renewal-success\", sloth_service=\"cert-manager\",\
+      \ sloth_slo=\"certificate-renewal-success\"} > (3 * 0.005)) without (sloth_window)\n\
+      )\nor\n(\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"cert-manager-certificate-renewal-success\"\
+      , sloth_service=\"cert-manager\", sloth_slo=\"certificate-renewal-success\"\
+      } > (1 * 0.005)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate3d{sloth_id=\"\
+      cert-manager-certificate-renewal-success\", sloth_service=\"cert-manager\",\
+      \ sloth_slo=\"certificate-renewal-success\"} > (1 * 0.005)) without (sloth_window)\n\
+      )\n"
+    labels:
+      severity: warning
+      sloth_severity: ticket
+- name: sloth-slo-sli-recordings-clickhouse-query-latency
+  rules:
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[5m]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[5m])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[5m])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 5m
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate5m
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[30m]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[30m])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[30m])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 30m
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate30m
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[1h]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[1h])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[1h])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 1h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate1h
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[2h]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[2h])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[2h])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 2h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate2h
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[6h]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[6h])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[6h])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 6h
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate6h
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[1d]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[1d])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[1d])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 1d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate1d
+  - expr: '(sum(rate(chi_clickhouse_event_query{status="ExceptionBeforeStart"}[3d]))
+      + sum(rate(chi_clickhouse_event_query{status="ExceptionWhileProcessing"}[3d])))
+
+      /
+
+      (sum(rate(chi_clickhouse_event_query[3d])))
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 3d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate3d
+  - expr: 'sum_over_time(slo:sli_error:ratio_rate5m{sloth_id="clickhouse-query-latency",
+      sloth_service="clickhouse", sloth_slo="query-latency"}[30d])
+
+      / ignoring (sloth_window)
+
+      count_over_time(slo:sli_error:ratio_rate5m{sloth_id="clickhouse-query-latency",
+      sloth_service="clickhouse", sloth_slo="query-latency"}[30d])
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_window: 30d
+      team: platform
+      tier: critical
+    record: slo:sli_error:ratio_rate30d
+- name: sloth-slo-meta-recordings-clickhouse-query-latency
+  rules:
+  - expr: vector(0.99)
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      team: platform
+      tier: critical
+    record: slo:objective:ratio
+  - expr: vector(1-0.99)
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      team: platform
+      tier: critical
+    record: slo:error_budget:ratio
+  - expr: vector(30)
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      team: platform
+      tier: critical
+    record: slo:time_period:days
+  - expr: 'slo:sli_error:ratio_rate5m{sloth_id="clickhouse-query-latency", sloth_service="clickhouse",
+      sloth_slo="query-latency"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="clickhouse-query-latency", sloth_service="clickhouse",
+      sloth_slo="query-latency"}
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      team: platform
+      tier: critical
+    record: slo:current_burn_rate:ratio
+  - expr: 'slo:sli_error:ratio_rate30d{sloth_id="clickhouse-query-latency", sloth_service="clickhouse",
+      sloth_slo="query-latency"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="clickhouse-query-latency", sloth_service="clickhouse",
+      sloth_slo="query-latency"}
+
+      '
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      team: platform
+      tier: critical
+    record: slo:period_burn_rate:ratio
+  - expr: 1 - slo:period_burn_rate:ratio{sloth_id="clickhouse-query-latency", sloth_service="clickhouse",
+      sloth_slo="query-latency"}
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      team: platform
+      tier: critical
+    record: slo:period_error_budget_remaining:ratio
+  - expr: vector(1)
+    labels:
+      sloth_id: clickhouse-query-latency
+      sloth_mode: cli-gen-k8s
+      sloth_objective: '99'
+      sloth_service: clickhouse
+      sloth_slo: query-latency
+      sloth_spec: sloth.slok.dev/v1
+      sloth_version: v0.16.0
+      team: platform
+      tier: critical
+    record: sloth_slo_info
+- name: sloth-slo-alerts-clickhouse-query-latency
+  rules:
+  - alert: ClickHouseQueryErrors
+    annotations:
+      summary: ClickHouse query error rate exceeds SLO budget
+      title: (page) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate5m{sloth_id=\"clickhouse-query-latency\"\
+      , sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"} > (14.4 * 0.01))\
+      \ without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1h{sloth_id=\"\
+      clickhouse-query-latency\", sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"\
+      } > (14.4 * 0.01)) without (sloth_window)\n)\nor\n(\n    max(slo:sli_error:ratio_rate30m{sloth_id=\"\
+      clickhouse-query-latency\", sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"\
+      } > (6 * 0.01)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"\
+      clickhouse-query-latency\", sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"\
+      } > (6 * 0.01)) without (sloth_window)\n)\n"
+    labels:
+      severity: critical
+      sloth_severity: page
+  - alert: ClickHouseQueryErrors
+    annotations:
+      summary: ClickHouse query error rate exceeds SLO budget
+      title: (ticket) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate2h{sloth_id=\"clickhouse-query-latency\"\
+      , sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"} > (3 * 0.01)) without\
+      \ (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1d{sloth_id=\"clickhouse-query-latency\"\
+      , sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"} > (3 * 0.01)) without\
+      \ (sloth_window)\n)\nor\n(\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"clickhouse-query-latency\"\
+      , sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"} > (1 * 0.01)) without\
+      \ (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate3d{sloth_id=\"clickhouse-query-latency\"\
+      , sloth_service=\"clickhouse\", sloth_slo=\"query-latency\"} > (1 * 0.01)) without\
+      \ (sloth_window)\n)\n"
+    labels:
+      severity: warning
+      sloth_severity: ticket
+- name: sloth-slo-sli-recordings-grafana-http-availability
+  rules:
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[5m])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[5m])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 5m
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate5m
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[30m])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[30m])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 30m
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate30m
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[1h])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[1h])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 1h
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate1h
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[2h])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[2h])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 2h
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate2h
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[6h])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[6h])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 6h
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate6h
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[1d])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[1d])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 1d
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate1d
+  - expr: '(sum(rate(grafana_http_request_duration_seconds_count{status_code=~"5.."}[3d])))
+
+      /
+
+      (sum(rate(grafana_http_request_duration_seconds_count[3d])))
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 3d
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate3d
+  - expr: 'sum_over_time(slo:sli_error:ratio_rate5m{sloth_id="grafana-http-availability",
+      sloth_service="grafana", sloth_slo="http-availability"}[30d])
+
+      / ignoring (sloth_window)
+
+      count_over_time(slo:sli_error:ratio_rate5m{sloth_id="grafana-http-availability",
+      sloth_service="grafana", sloth_slo="http-availability"}[30d])
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_window: 30d
+      team: platform
+      tier: important
+    record: slo:sli_error:ratio_rate30d
+- name: sloth-slo-meta-recordings-grafana-http-availability
+  rules:
+  - expr: vector(0.99)
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      team: platform
+      tier: important
+    record: slo:objective:ratio
+  - expr: vector(1-0.99)
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      team: platform
+      tier: important
+    record: slo:error_budget:ratio
+  - expr: vector(30)
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      team: platform
+      tier: important
+    record: slo:time_period:days
+  - expr: 'slo:sli_error:ratio_rate5m{sloth_id="grafana-http-availability", sloth_service="grafana",
+      sloth_slo="http-availability"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="grafana-http-availability", sloth_service="grafana",
+      sloth_slo="http-availability"}
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      team: platform
+      tier: important
+    record: slo:current_burn_rate:ratio
+  - expr: 'slo:sli_error:ratio_rate30d{sloth_id="grafana-http-availability", sloth_service="grafana",
+      sloth_slo="http-availability"}
+
+      / on(sloth_id, sloth_slo, sloth_service) group_left
+
+      slo:error_budget:ratio{sloth_id="grafana-http-availability", sloth_service="grafana",
+      sloth_slo="http-availability"}
+
+      '
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      team: platform
+      tier: important
+    record: slo:period_burn_rate:ratio
+  - expr: 1 - slo:period_burn_rate:ratio{sloth_id="grafana-http-availability", sloth_service="grafana",
+      sloth_slo="http-availability"}
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_service: grafana
+      sloth_slo: http-availability
+      team: platform
+      tier: important
+    record: slo:period_error_budget_remaining:ratio
+  - expr: vector(1)
+    labels:
+      sloth_id: grafana-http-availability
+      sloth_mode: cli-gen-k8s
+      sloth_objective: '99'
+      sloth_service: grafana
+      sloth_slo: http-availability
+      sloth_spec: sloth.slok.dev/v1
+      sloth_version: v0.16.0
+      team: platform
+      tier: important
+    record: sloth_slo_info
+- name: sloth-slo-alerts-grafana-http-availability
+  rules:
+  - alert: GrafanaHighErrorRate
+    annotations:
+      summary: Grafana HTTP error rate exceeds SLO budget
+      title: (page) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate5m{sloth_id=\"grafana-http-availability\"\
+      , sloth_service=\"grafana\", sloth_slo=\"http-availability\"} > (14.4 * 0.01))\
+      \ without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1h{sloth_id=\"\
+      grafana-http-availability\", sloth_service=\"grafana\", sloth_slo=\"http-availability\"\
+      } > (14.4 * 0.01)) without (sloth_window)\n)\nor\n(\n    max(slo:sli_error:ratio_rate30m{sloth_id=\"\
+      grafana-http-availability\", sloth_service=\"grafana\", sloth_slo=\"http-availability\"\
+      } > (6 * 0.01)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"\
+      grafana-http-availability\", sloth_service=\"grafana\", sloth_slo=\"http-availability\"\
+      } > (6 * 0.01)) without (sloth_window)\n)\n"
+    labels:
+      severity: warning
+      sloth_severity: page
+  - alert: GrafanaHighErrorRate
+    annotations:
+      summary: Grafana HTTP error rate exceeds SLO budget
+      title: (ticket) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget
+        burn rate is too fast.
+    expr: "(\n    max(slo:sli_error:ratio_rate2h{sloth_id=\"grafana-http-availability\"\
+      , sloth_service=\"grafana\", sloth_slo=\"http-availability\"} > (3 * 0.01))\
+      \ without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate1d{sloth_id=\"\
+      grafana-http-availability\", sloth_service=\"grafana\", sloth_slo=\"http-availability\"\
+      } > (3 * 0.01)) without (sloth_window)\n)\nor\n(\n    max(slo:sli_error:ratio_rate6h{sloth_id=\"\
+      grafana-http-availability\", sloth_service=\"grafana\", sloth_slo=\"http-availability\"\
+      } > (1 * 0.01)) without (sloth_window)\n    and\n    max(slo:sli_error:ratio_rate3d{sloth_id=\"\
+      grafana-http-availability\", sloth_service=\"grafana\", sloth_slo=\"http-availability\"\
+      } > (1 * 0.01)) without (sloth_window)\n)\n"
+    labels:
+      severity: info
+      sloth_severity: ticket
+
+# Canary service availability SLO — generated by Pyrra from bool_gauge probe_success
+- name: canary-availability-increase
+  interval: 1m30s
+  rules:
+  - expr: sum by (__name__, instance, job) (count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[2w]))
+    labels:
+      slo: canary-availability
+    record: probe_success:count2w
+  - expr: sum by (__name__, instance, job) (sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[2w]))
+    labels:
+      slo: canary-availability
+    record: probe_success:sum2w
+  - alert: SLOMetricAbsent
+    expr: absent(probe_success{instance="canary-service",job="blackbox/http"}) == 1
+    for: 5m
+    labels:
+      severity: critical
+      slo: canary-availability
+
+- name: canary-availability
+  interval: 30s
+  rules:
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3m])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3m]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3m]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate3m
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[15m])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[15m]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[15m]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate15m
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[30m])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[30m]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[30m]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate30m
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[1h])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[1h]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[1h]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate1h
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3h])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3h]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[3h]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate3h
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[12h])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[12h]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[12h]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate12h
+  - expr: (sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[2d])) - sum(sum_over_time(probe_success{instance="canary-service",job="blackbox/http"}[2d]))) / sum(count_over_time(probe_success{instance="canary-service",job="blackbox/http"}[2d]))
+    labels:
+      instance: canary-service
+      job: blackbox/http
+      slo: canary-availability
+    record: probe_success:burnrate2d
+  - alert: CanaryAvailability
+    expr: probe_success:burnrate3m{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (14 * (1-0.99)) and probe_success:burnrate30m{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (14 * (1-0.99))
+    for: 1m
+    labels:
+      exhaustion: 1d
+      instance: canary-service
+      job: blackbox/http
+      long: 30m
+      severity: critical
+      short: 3m
+      slo: canary-availability
+  - alert: CanaryAvailability
+    expr: probe_success:burnrate15m{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (7 * (1-0.99)) and probe_success:burnrate3h{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (7 * (1-0.99))
+    for: 8m
+    labels:
+      exhaustion: 2d
+      instance: canary-service
+      job: blackbox/http
+      long: 3h
+      severity: critical
+      short: 15m
+      slo: canary-availability
+  - alert: CanaryAvailability
+    expr: probe_success:burnrate1h{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (2 * (1-0.99)) and probe_success:burnrate12h{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (2 * (1-0.99))
+    for: 30m
+    labels:
+      exhaustion: 1w
+      instance: canary-service
+      job: blackbox/http
+      long: 12h
+      severity: warning
+      short: 1h
+      slo: canary-availability
+  - alert: CanaryAvailability
+    expr: probe_success:burnrate3h{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (1 * (1-0.99)) and probe_success:burnrate2d{instance="canary-service",job="blackbox/http",slo="canary-availability"} > (1 * (1-0.99))
+    for: 1h30m
+    labels:
+      exhaustion: 2w
+      instance: canary-service
+      job: blackbox/http
+      long: 2d
+      severity: warning
+      short: 3h
+      slo: canary-availability
+
+- name: canary-availability-generic
+  interval: 30s
+  rules:
+  - expr: '0.99'
+    labels:
+      slo: canary-availability
+    record: pyrra_objective
+  - expr: '1209600'
+    labels:
+      slo: canary-availability
+    record: pyrra_window
+  - expr: sum(probe_success:sum2w{instance="canary-service",job="blackbox/http",slo="canary-availability"}) / sum(probe_success:count2w{instance="canary-service",job="blackbox/http",slo="canary-availability"})
+    labels:
+      slo: canary-availability
+    record: pyrra_availability
+  - expr: sum(probe_success:count2w{instance="canary-service",job="blackbox/http",slo="canary-availability"})
+    labels:
+      slo: canary-availability
+    record: pyrra_requests:rate5m
+  - expr: sum(probe_success:count2w{instance="canary-service",job="blackbox/http",slo="canary-availability"}) - sum(probe_success:sum2w{instance="canary-service",job="blackbox/http",slo="canary-availability"})
+    labels:
+      slo: canary-availability
+    record: pyrra_errors:rate5m

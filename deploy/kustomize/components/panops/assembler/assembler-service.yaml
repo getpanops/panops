@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: panops-assembler
+  namespace: panops
+spec:
+  selector:
+    app: panops-assembler
+  ports:
+  - name: webhook
+    port: 8080
+    targetPort: 8080

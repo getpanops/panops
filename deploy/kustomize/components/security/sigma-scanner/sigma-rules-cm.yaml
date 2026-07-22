@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigma-rules
+  namespace: security
+data:
+  linux-container-shell.yaml: |
+    title: Interactive Shell Spawned in Container
+    id: a5b3c2d1-1234-5678-abcd-ef0123456789
+    status: experimental
+    description: Detects an interactive shell process spawned inside a running container.
+    author: panops
+    date: 2026-06-27
+    tags:
+      - attack.execution
+      - attack.t1059.004
+      - attack.t1609
+    level: high
+    x-panops-logql: '{exporter="loki", event_class="runtime-security", job="falco"} |= "Terminal shell in container"'
+    x-panops-chsql: |
+      SELECT string, timestamp_ns FROM qryn.samples_v3
+      WHERE fingerprint IN (
+          SELECT fingerprint FROM qryn.time_series
+          WHERE labels LIKE '%"job":"falco"%'
+            AND labels LIKE '%"event_class":"runtime-security"%'
+      )
+      AND string LIKE '%Terminal shell in container%'
+      AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+      LIMIT 500
+
+  linux-crypto-miner.yaml: |
+    title: Crypto Miner Process Detected
+    id: b6c4d3e2-2345-6789-bcde-f01234567890
+    status: experimental
+    description: Detects execution of known cryptocurrency mining binaries or pool connections.
+    author: panops
+    date: 2026-06-27
+    tags:
+      - attack.impact
+      - attack.t1496
+    level: critical
+    x-panops-logql: '{exporter="loki", event_class=~"application|auth"} |~ "xmrig|minerd|cpuminer|ethminer|nbminer|stratum\\+|pool\\.minexmr|xmrpool|moneropool|--donate-level" !~ "executeQuery|TCPHandler|DB::Exception"'
+    x-panops-chsql: |
+      SELECT string, timestamp_ns FROM qryn.samples_v3
+      WHERE fingerprint IN (
+          SELECT fingerprint FROM qryn.time_series
+          WHERE (labels LIKE '%"event_class":"application"%' OR labels LIKE '%"event_class":"auth"%')
+      )
+      AND (string LIKE '%xmrig%' OR string LIKE '%minerd%' OR string LIKE '%cpuminer%'
+           OR string LIKE '%ethminer%' OR string LIKE '%nbminer%' OR string LIKE '%stratum+%'
+           OR string LIKE '%pool.minexmr%' OR string LIKE '%xmrpool%' OR string LIKE '%moneropool%'
+           OR string LIKE '%-donate-level%')
+      AND string NOT LIKE '%executeQuery%'
+      AND string NOT LIKE '%TCPHandler%'
+      AND string NOT LIKE '%DB::Exception%'
+      AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+      LIMIT 500
+
+  linux-c2-callback.yaml: |
+    title: Potential C2 Callback from Container
+    id: c7d5e4f3-3456-789a-cdef-012345678901
+    status: experimental
+    description: Detects reverse shell indicators or common C2 port connections from containers.
+    author: panops
+    date: 2026-06-27
+    tags:
+      - attack.command_and_control
+      - attack.t1071
+      - attack.t1105
+    level: high
+    x-panops-logql: '{exporter="loki", event_class="runtime-security", job="falco"} |= "Redirect STDOUT/STDIN to Network Connection" |~ "rport=(4444|4445|1337|31337|9001)[^0-9]"'
+    x-panops-chsql: |
+      SELECT string, timestamp_ns FROM qryn.samples_v3
+      WHERE fingerprint IN (
+          SELECT fingerprint FROM qryn.time_series
+          WHERE labels LIKE '%"job":"falco"%'
+            AND labels LIKE '%"event_class":"runtime-security"%'
+      )
+      AND string LIKE '%Redirect STDOUT/STDIN to Network Connection%'
+      AND (string LIKE '% rport=4444 %' OR string LIKE '% rport=4445 %'
+           OR string LIKE '% rport=1337 %' OR string LIKE '% rport=31337 %'
+           OR string LIKE '% rport=9001 %')
+      AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+      LIMIT 500
+
+  linux-privilege-escalation.yaml: |
+    title: Privilege Escalation via Capability Change
+    id: d8e6f5a4-4567-89ab-def0-123456789012
+    status: experimental
+    description: Detects capability manipulation that may indicate privilege escalation inside a container.
+    author: panops
+    date: 2026-06-27
+    tags:
+      - attack.privilege_escalation
+      - attack.t1548.001
+      - attack.t1548.003
+    level: high
+    x-panops-logql: '{exporter="loki", event_class="runtime-security", job="falco"} |~ "cap_setuid|cap_sys_admin|cap_net_admin|cap_dac_override|setcap|capsh"'
+    x-panops-chsql: |
+      SELECT string, timestamp_ns FROM qryn.samples_v3
+      WHERE fingerprint IN (
+          SELECT fingerprint FROM qryn.time_series
+          WHERE labels LIKE '%"job":"falco"%'
+            AND labels LIKE '%"event_class":"runtime-security"%'
+      )
+      AND (string LIKE '%cap_setuid%' OR string LIKE '%cap_sys_admin%'
+           OR string LIKE '%cap_net_admin%' OR string LIKE '%cap_dac_override%'
+           OR string LIKE '%setcap%' OR string LIKE '%capsh%')
+      AND timestamp_ns BETWEEN {start_ns} AND {end_ns}
+      LIMIT 500

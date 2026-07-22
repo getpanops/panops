@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-talon-rules
+  namespace: security
+  labels:
+    app.kubernetes.io/part-of: falco-talon
+    app.kubernetes.io/name: falco-talon
+data:
+  rules.yaml: |
+    # Starter Talon rules — maps to common Falco community rule names.
+    # Actions: kubernetes:terminate kills the pod; kubernetes:label marks it for review.
+    # DaemonSets and StatefulSets are excluded from termination to avoid cascading failures.
+
+    - rule: Terminal Shell in Container
+      match:
+        rules:
+          - Terminal Shell in Container
+      actions:
+        - action: Label Pod as Suspicious
+        - action: Terminate Ephemeral Pod
+
+    - rule: Contact K8S API Server From Container
+      match:
+        rules:
+          - Contact K8S API Server From Container
+      actions:
+        - action: Label Pod as Suspicious
+
+    - rule: Detect crypto miners using the Stratum protocol
+      match:
+        rules:
+          - Detect crypto miners using the Stratum protocol
+      actions:
+        - action: Terminate Pod
+
+    - rule: Write below root
+      match:
+        rules:
+          - Write below root
+      actions:
+        - action: Label Pod as Suspicious
+
+    # Label-only: CNI/multus binaries fire with no pod context; some StatefulSets write helper
+    # binaries at runtime; a workload running psql at runtime warrants investigation, not auto-kill.
+    - rule: Drop and Execute New Binary in Container
+      match:
+        rules:
+          - Drop and execute new binary in container
+      actions:
+        - action: Label Pod as Suspicious
+
+    # Label-only: SSH gateway workloads legitimately redirect stdin/stdout to
+    # the network for SSH. Terminate here would sever SSH-based git access.
+    - rule: Redirect STDOUT/STDIN to Network Connection
+      match:
+        rules:
+          - Redirect STDOUT/STDIN to Network Connection in Container
+      actions:
+        - action: Label Pod as Suspicious
+
+    # Label-only: postgres operator pods run sh for health checks; all are StatefulSets.
+    - rule: Run Shell Untrusted
+      match:
+        rules:
+          - Run shell untrusted
+      actions:
+        - action: Label Pod as Suspicious
+
+    - action: Label Pod as Suspicious
+      actionner: kubernetes:label
+      parameters:
+        labels:
+          analysis/status: suspicious
+
+    - action: Terminate Pod
+      actionner: kubernetes:terminate
+      parameters:
+        grace_period_seconds: 0
+
+    - action: Terminate Ephemeral Pod
+      actionner: kubernetes:terminate
+      parameters:
+        ignore_daemonsets: true
+        ignore_statefulsets: true
+        grace_period_seconds: 5

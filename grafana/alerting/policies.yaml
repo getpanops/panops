@@ -1,0 +1,96 @@
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: SRE Alerts
+    group_by: [alertname, namespace]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # PanOps infrastructure alerts: bypass assembler, go direct to #noc
+      - receiver: NOC Alerts
+        matchers:
+          - team = noc
+        group_by: [alertname]
+        group_wait: 10s
+        group_interval: 5m
+        repeat_interval: 30m
+
+      # CVE digest: muted outside 05:44–05:52 UTC (3:14–3:22pm ADST), no resolve messages
+      - receiver: SOC CVE Digest
+        matchers:
+          - alert_class = cve-digest
+        group_by: [alertname]
+        group_wait: 1m
+        group_interval: 23h
+        repeat_interval: 23h
+        mute_time_intervals:
+          - outside-cve-digest-window
+
+      # New CVE: immediate, no mute, no resolve message — only fires when critical count increases vs 24h ago
+      - receiver: SOC CVE New
+        matchers:
+          - alert_class = cve-new
+        group_by: [alertname]
+        group_wait: 10s
+        group_interval: 1h
+        repeat_interval: 24h
+
+      - receiver: SOC Alerts
+        matchers:
+          - source = security
+          - severity = critical
+        group_by: [alertname, falco_rule, falco_priority]
+        group_wait: 10s
+        group_interval: 5m
+        repeat_interval: 4h
+
+      - receiver: SOC Alerts
+        matchers:
+          - source = security
+        group_by: [alertname, falco_rule, falco_priority]
+        group_wait: 10s
+        group_interval: 5m
+        repeat_interval: 1h
+
+      # SRE critical: route to PanOps webhook first, then continue to email
+      - receiver: SRE Alerts
+        matchers:
+          - team = sre
+          - severity = critical
+        group_by: [alertname, namespace]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+        continue: true
+
+      - receiver: email-critical
+        matchers:
+          - severity = critical
+          - alertname !~ "Blackbox.*|SLO.*"
+        group_by: [alertname, severity]
+        group_wait: 10s
+        group_interval: 1h
+        repeat_interval: 30m
+
+      # SLO fast burn — page immediately (Pyrra severity=critical)
+      - receiver: SRE Alerts
+        matchers:
+          - slo =~ ".+"
+          - severity = critical
+        group_by: [alertname, slo]
+        group_wait: 10s
+        group_interval: 5m
+        repeat_interval: 1h
+
+      # SLO slow burn — ticket rate (Pyrra severity=warning)
+      - receiver: SRE Alerts
+        matchers:
+          - slo =~ ".+"
+          - severity = warning
+        group_by: [alertname, slo]
+        group_wait: 5m
+        group_interval: 30m
+        repeat_interval: 8h
+
+      # Critical SRE falls through to root SRE Alerts (Matrix only)

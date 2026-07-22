@@ -1,0 +1,51 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: sigma-scanner
+  namespace: security
+spec:
+  endpointSelector:
+    matchLabels:
+      app: sigma-scanner
+
+  egress:
+  # DNS
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+
+  # Loki query API (gigapipe)
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+        app: gigapipe
+    toPorts:
+    - ports:
+      - port: "3100"
+        protocol: TCP
+
+  # ClickHouse HTTP API
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: observability
+    toPorts:
+    - ports:
+      - port: "8123"
+        protocol: TCP
+
+  # pip install (pypi) — init container only
+  - toEntities:
+    - world
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+      - port: "80"
+        protocol: TCP
