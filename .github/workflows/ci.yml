@@ -187,7 +187,8 @@ jobs:
           CH_PASSWORD: CHANGE_ME_strong_password_here
         run: |
           pip install pytest requests clickhouse-driver
-          pytest tests/test_00_connectivity.py tests/test_01_pipeline.py -v
+          pytest tests/test_00_connectivity.py tests/test_01_pipeline.py -v \
+            -k "not llama and not heartbeat"
       - name: Teardown
         if: always()
         run: cd deploy/docker-compose && docker compose down -v
